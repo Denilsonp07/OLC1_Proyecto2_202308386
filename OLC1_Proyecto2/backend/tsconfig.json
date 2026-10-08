@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",                /* Versión de JS a generar */
+    "module": "CommonJS",              /* Sistema de módulos para Node.js */
+    "rootDir": "./src",                /* Carpeta donde escribirás tu código .ts */
+    "outDir": "./build",               /* Carpeta donde se guardará el código .js compilado */
+    "strict": true,                    /* Validación estricta de tipos */
+    "esModuleInterop": true,           /* Compatibilidad de módulos */
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*"]              /* Solo compilar lo que esté dentro de src */
+}
