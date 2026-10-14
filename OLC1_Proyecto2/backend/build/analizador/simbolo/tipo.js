@@ -22,4 +22,5 @@ var tipoDato;
     tipoDato[tipoDato["CHAR"] = 3] = "CHAR";
     tipoDato[tipoDato["CADENA"] = 4] = "CADENA";
     tipoDato[tipoDato["VOID"] = 5] = "VOID";
+    tipoDato[tipoDato["SERVER"] = 6] = "SERVER";
 })(tipoDato || (exports.tipoDato = tipoDato = {}));

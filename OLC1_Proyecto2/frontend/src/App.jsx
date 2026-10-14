@@ -1,122 +1,78 @@
 import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
 
-function App() {
-  const [count, setCount] = useState(0)
+// Debe coincidir con el puerto del backend (PORT en backend/src/index.ts)
+const API_URL = 'http://localhost:8081/api/execute'
 
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+const EJEMPLO = `server web {
+  cpu = 2;
+  memory = 4;
+  disk = 50;
+  os = "ubuntu";
 }
 
-export default App
+int cost = web.cpu * 10 + web.memory * 5;
+print("Costo: " + cost);
+print("Estado: " + web.status);`
+
+export default function App() {
+  const [source, setSource] = useState(EJEMPLO)
+  const [res, setRes] = useState(null)
+  const [cargando, setCargando] = useState(false)
+  const [errorRed, setErrorRed] = useState(null)
+
+  async function ejecutar() {
+    setCargando(true)
+    setErrorRed(null)
+    try {
+      const r = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source }),
+      })
+      setRes(await r.json())
+    } catch (e) {
+      setErrorRed(e.message)   // fallo de RED, distinto de un error del lenguaje
+    } finally {
+      setCargando(false)
+    }
+  }
+
+  const caja = { background: '#111', color: '#ddd', padding: 12, borderRadius: 6, whiteSpace: 'pre-wrap', minHeight: 40 }
+
+  return (
+    <div style={{ fontFamily: 'monospace', padding: 20, maxWidth: 960, margin: '0 auto', textAlign: 'left' }}>
+      <h1>AutoInfra</h1>
+      <textarea value={source} onChange={(e) => setSource(e.target.value)} rows={14}
+        style={{ width: '100%', fontFamily: 'monospace', fontSize: 14, boxSizing: 'border-box' }} />
+      <p>
+        <button onClick={ejecutar} disabled={cargando}>{cargando ? 'Ejecutando...' : 'Ejecutar'}</button>
+        {res && <strong style={{ marginLeft: 12, color: res.success ? 'green' : 'crimson' }}>
+          {res.success ? '✔ Ejecución exitosa' : '✘ Ejecución con errores'}</strong>}
+      </p>
+
+      {errorRed && <p style={{ color: 'crimson' }}>No se pudo contactar al backend: {errorRed}. ¿Está corriendo en {API_URL}?</p>}
+
+      {res && (<>
+        <h3>Consola</h3>
+        <div style={caja}>{res.console?.join('\n')}</div>
+
+        <h3>Errores ({res.errors?.length ?? 0})</h3>
+        <table border="1" cellPadding="4" style={{ borderCollapse: 'collapse', width: '100%' }}>
+          <thead><tr><th>Tipo</th><th>Descripción</th><th>Línea</th><th>Columna</th></tr></thead>
+          <tbody>{res.errors?.map((e, i) => (
+            <tr key={i}><td>{e.tipo}</td><td>{e.descripcion}</td><td>{e.linea}</td><td>{e.columna}</td></tr>))}</tbody>
+        </table>
+
+        <h3>Tabla de símbolos</h3>
+        <table border="1" cellPadding="4" style={{ borderCollapse: 'collapse', width: '100%' }}>
+          <thead><tr><th>Identificador</th><th>Tipo</th><th>Valor / Estado</th></tr></thead>
+          <tbody>{res.symbols?.map((s, i) => (
+            <tr key={i}><td>{s.identificador}</td><td>{s.tipo}</td><td>{String(s.valor)}</td></tr>))}</tbody>
+        </table>
+
+        <h3>Infraestructura</h3>
+        <div style={caja}>{JSON.stringify(res.infrastructure, null, 2)}</div>
+      </>)}
+    </div>
+  )
+}

@@ -20,7 +20,8 @@ export enum tipoDato{
     BOOLEAN,
     CHAR,
     CADENA,
-    VOID
+    VOID,
+    SERVER,
 
 
 }

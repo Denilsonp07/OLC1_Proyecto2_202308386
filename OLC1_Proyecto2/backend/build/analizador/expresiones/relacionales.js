@@ -45,6 +45,9 @@ class Relacionales extends instruccion_1.Instruccion {
     operador1;
     operador2;
     Operacion;
+    esNumerico(t) {
+        return t === tipo_1.tipoDato.ENTERO || t === tipo_1.tipoDato.DECIMAL;
+    }
     constructor(operacion, linea, columna, op1, op2) {
         super(new tipo_1.default(tipo_1.tipoDato.BOOLEAN), linea, columna);
         this.Operacion = operacion;
@@ -69,46 +72,22 @@ class Relacionales extends instruccion_1.Instruccion {
     igualdad(op1, op2) {
         let tipo1 = this.operador1.tipoDato.getTipo();
         let tipo2 = this.operador2.tipoDato.getTipo();
-        switch (tipo1) {
-            case tipo_1.tipoDato.ENTERO:
-                switch (tipo2) {
-                    case tipo_1.tipoDato.ENTERO:
-                        this.tipoDato.setTipo(tipo_1.tipoDato.BOOLEAN);
-                        return parseInt(op1) == parseInt(op2);
-                    default:
-                        return new errores_1.default("semnatico", "Este caso no se reconoce", this.linea, this.columna);
-                }
-            case tipo_1.tipoDato.CADENA:
-                switch (tipo2) {
-                    case tipo_1.tipoDato.CADENA:
-                        this.tipoDato.setTipo(tipo_1.tipoDato.BOOLEAN);
-                        return op1 == op2;
-                    default:
-                        return new errores_1.default("semnatico", "Este caso no se reconoce", this.linea, this.columna);
-                }
-        }
+        this.tipoDato.setTipo(tipo_1.tipoDato.BOOLEAN);
+        if (this.esNumerico(tipo1) && this.esNumerico(tipo2))
+            return Number(op1) === Number(op2);
+        if (tipo1 === tipo_1.tipoDato.CADENA && tipo2 === tipo_1.tipoDato.CADENA)
+            return op1 === op2;
+        if (tipo1 === tipo_1.tipoDato.BOOLEAN && tipo2 === tipo_1.tipoDato.BOOLEAN)
+            return op1 === op2;
+        return new errores_1.default("Semántico", "Los operandos de == no son compatibles", this.linea, this.columna);
     }
     menor(op1, op2) {
         let tipo1 = this.operador1.tipoDato.getTipo();
         let tipo2 = this.operador2.tipoDato.getTipo();
-        switch (tipo1) {
-            case tipo_1.tipoDato.ENTERO:
-                switch (tipo2) {
-                    case tipo_1.tipoDato.ENTERO:
-                        this.tipoDato.setTipo(tipo_1.tipoDato.BOOLEAN);
-                        return parseInt(op1) < parseInt(op2);
-                    default:
-                        return new errores_1.default("semnatico", "Este caso no se reconoce", this.linea, this.columna);
-                }
-            case tipo_1.tipoDato.DECIMAL:
-                switch (tipo2) {
-                    case tipo_1.tipoDato.ENTERO:
-                        this.tipoDato.setTipo(tipo_1.tipoDato.BOOLEAN);
-                        return parseFloat(op1) < parseFloat(op2);
-                    default:
-                        return new errores_1.default("semnatico", "Este caso no se reconoce", this.linea, this.columna);
-                }
-        }
+        this.tipoDato.setTipo(tipo_1.tipoDato.BOOLEAN);
+        if (this.esNumerico(tipo1) && this.esNumerico(tipo2))
+            return Number(op1) < Number(op2);
+        return new errores_1.default("Semántico", "El operador < requiere int o float en ambos lados", this.linea, this.columna);
     }
 }
 exports.default = Relacionales;

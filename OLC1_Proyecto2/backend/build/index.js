@@ -5,67 +5,80 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
-// Importamos las clases 
 const arbol_1 = __importDefault(require("./analizador/simbolo/arbol"));
-const tablaSimbolo_1 = __importDefault(require("./analizador/simbolo/tablaSimbolo"));
-// Importamos el analizador generado por Jison. 
-// Usamos 'require' porque Jison genera JavaScript puro (CommonJS)
+const errores_1 = __importDefault(require("./analizador/excepciones/errores"));
+const tipo_1 = require("./analizador/simbolo/tipo");
+const Server_1 = require("./infraestructura/Server");
+// Jison genera JavaScript puro (CommonJS), por eso require.
 const parser = require('./analizador/analizador.js');
 const app = (0, express_1.default)();
-const PORT = 8080;
+const PORT = Number(process.env.PORT) || 8081;
 app.use((0, cors_1.default)());
 app.use(express_1.default.json());
 app.get('/api/health', (req, res) => {
     res.json({ success: true, message: "El backend del compilador está funcionando." });
 });
+const infraVacia = () => ({ servers: [], services: [], databases: [] });
 app.post('/api/execute', (req, res) => {
-    const { source } = req.body;
-    if (!source) {
-        return res.status(400).json({ success: false, message: "No se proporcionó código fuente" });
+    // Express 5: req.body es undefined si no llegó JSON
+    const source = req.body?.source;
+    if (typeof source !== 'string') {
+        return res.status(400).json({ success: false, message: "El campo 'source' (string) es obligatorio" });
     }
+    // ---- 1. Léxico + sintáctico (Jison LANZA excepción si falla) ----
+    let ast;
     try {
-        // 1. Análisis Léxico y Sintáctico
-        // Jison procesa el texto y retorna un arreglo con las instrucciones (el AST)[cite: 14, 16]
-        const ast = parser.parse(source);
-        // 2. Inicialización del Entorno y Estado Global
-        const entornoGlobal = new tablaSimbolo_1.default(); // Entorno raíz (no tiene padre)[cite: 1]
-        const arbol = new arbol_1.default(ast);
-        // 3. Primer recorrido: Registrar recursos, funciones y tareas globales[cite: 16]
-        // (Por ahora recorreremos todo el AST, luego separaremos el main)
-        for (let instruccion of ast) {
-            instruccion.interpretar(entornoGlobal, arbol);
-        }
-        // 4. Retornar la respuesta con el formato exacto requerido por el frontend[cite: 25]
-        res.json({
-            success: true,
-            console: arbol.getConsola() ? arbol.getConsola().split('\n') : [],
-            errors: arbol.getErrores(), // Lista de errores léxicos, sintácticos y semánticos
-            symbols: [], // Aquí mapearemos la tabla de símbolos después
-            infrastructure: {
-                servers: [], // Aquí extraeremos los recursos del entornoGlobal
-                services: [],
-                databases: []
-            }
-        });
+        ast = parser.parse(source);
     }
     catch (error) {
-        // Captura de errores irrecuperables (ej. error sintáctico fatal de Jison)
-        console.error("Error durante la compilación:", error);
-        res.json({
-            success: false,
-            console: [],
-            errors: [
-                {
-                    tipo: "Sintáctico",
-                    codigo: "SYN-001",
-                    descripcion: error.message || "Error irrecuperable en el parser",
-                    linea: error.hash?.loc?.first_line || 0,
-                    columna: error.hash?.loc?.first_column || 0
-                }
-            ],
-            infrastructure: { servers: [], services: [], databases: [] }
+        const msg = error.message || "Error en el parser";
+        const hash = error.hash ?? {};
+        return res.json({
+            success: false, console: [], symbols: [], tokens: [], infrastructure: infraVacia(),
+            errors: [{
+                    tipo: msg.startsWith("Lexical error") ? "Léxico" : "Sintáctico",
+                    descripcion: msg,
+                    linea: hash.loc?.first_line ?? (typeof hash.line === 'number' ? hash.line + 1 : 0),
+                    columna: hash.loc?.first_column ?? 0
+                }]
         });
     }
+    // ---- 2. Ejecución (try/catch aparte) ----
+    const arbol = new arbol_1.default(ast);
+    const entornoGlobal = arbol.getTablaGlobal(); // una sola tabla global: la del árbol
+    const errores = arbol.getErrores();
+    try {
+        for (const instruccion of ast) {
+            const resultado = instruccion.interpretar(arbol, entornoGlobal);
+            if (resultado instanceof errores_1.default)
+                errores.push(resultado); // ANTES se descartaba
+        }
+    }
+    catch (error) {
+        errores.push(new errores_1.default("Ejecución", `Error interno del intérprete: ${error.message}`, 0, 0));
+    }
+    // ---- 3. Respuesta ----
+    const symbols = [];
+    const infrastructure = infraVacia();
+    for (const [id, simbolo] of entornoGlobal.getTabla()) {
+        const valor = simbolo.getValor();
+        if (valor instanceof Server_1.Server) {
+            infrastructure.servers.push({ name: id, ...valor.toJSON() });
+            symbols.push({ identificador: id, tipo: "SERVER", valor: valor.status });
+        }
+        else {
+            symbols.push({ identificador: id, tipo: tipo_1.tipoDato[simbolo.getTipo().getTipo()], valor });
+        }
+    }
+    const consola = arbol.getConsola();
+    res.json({
+        success: errores.length === 0,
+        console: consola === "" ? [] : consola.replace(/\n$/, "").split("\n"),
+        errors: errores,
+        symbols,
+        tokens: [],
+        infrastructure
+    });
 });
 app.listen(PORT, () => {
     console.log(`Servidor AutoInfra corriendo en http://localhost:${PORT}`);

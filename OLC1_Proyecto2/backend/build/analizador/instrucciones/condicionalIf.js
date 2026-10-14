@@ -61,9 +61,10 @@ class CondicionalIf extends instruccion_1.Instruccion {
             return new errores_1.default("Semantico", "La condicion debe ser un booleano", this.linea, this.columna);
         }
         if (cond) {
+            const tablaIf = tabla.crearHijo();
             for (let i of this.instruccionesIf) {
                 if (i instanceof instruccion_1.Instruccion) {
-                    let resultado = i.interpretar(arbol, tabla);
+                    let resultado = i.interpretar(arbol, tablaIf);
                     if (resultado instanceof errores_1.default)
                         return resultado;
                 }
@@ -71,9 +72,10 @@ class CondicionalIf extends instruccion_1.Instruccion {
         }
         else {
             if (this.instruccionesElse != undefined) {
+                const tablaElse = tabla.crearHijo();
                 for (let i of this.instruccionesElse) {
                     if (i instanceof instruccion_1.Instruccion) {
-                        let resultado = i.interpretar(arbol, tabla);
+                        let resultado = i.interpretar(arbol, tablaElse);
                         if (resultado instanceof errores_1.default)
                             return resultado;
                     }

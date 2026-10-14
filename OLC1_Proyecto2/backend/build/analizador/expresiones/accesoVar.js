@@ -51,7 +51,7 @@ class AccesoVar extends instruccion_1.Instruccion {
     interpretar(arbol, tabla) {
         let valor = tabla.getVariable(this.id);
         if (valor == null) {
-            return new errores_1.default("Semantico", "No se puede acceder al valor de esta variable", this.linea, this.columna);
+            return new errores_1.default("Semántico", `La variable '${this.id}' no ha sido declarada`, this.linea, this.columna);
         }
         this.tipoDato = valor.getTipo();
         return valor.getValor();

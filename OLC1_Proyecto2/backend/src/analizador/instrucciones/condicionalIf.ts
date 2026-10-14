@@ -34,17 +34,19 @@ export default class CondicionalIf extends Instruccion{
         }
 
         if(cond){
+            const tablaIf = tabla.crearHijo()
             for(let i of this.instruccionesIf){
                 if(i instanceof Instruccion){
-                    let resultado = i. interpretar(arbol,tabla)
+                    let resultado = i.interpretar(arbol,tablaIf)
                     if(resultado instanceof Errores) return resultado
                 }
             }
         }else {
-            if(this.instruccionesElse != undefined){
+           if(this.instruccionesElse != undefined){
+                const tablaElse = tabla.crearHijo()
                 for(let i of this.instruccionesElse){
                     if(i instanceof Instruccion){
-                        let resultado= i.interpretar(arbol,tabla)
+                        let resultado= i.interpretar(arbol,tablaElse)
                         if(resultado instanceof Errores) return resultado
                     }
                 }

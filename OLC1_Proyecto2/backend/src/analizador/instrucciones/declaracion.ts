@@ -5,7 +5,8 @@ import Errores from "../excepciones/errores";
 import Arbol from "../simbolo/arbol";
 import Simbolo from "../simbolo/simbolo";
 import TablaSimbolo from "../simbolo/tablaSimbolo";
-import Tipo from "../simbolo/tipo";
+
+import Tipo, { tipoDato } from "../simbolo/tipo";
 
 
 //id 
@@ -34,7 +35,12 @@ export default class Declaracion extends Instruccion{
         if(resValor instanceof Errores) return resValor
 
         if(this.tipoDato.getTipo() != this.tipoDato.getTipo()){
-            return new Errores("Semantico", "el tipo de dato no coincide", this.linea,this.columna)
+
+        const declarado = this.tipoDato.getTipo()
+        const delValor  = this.valor.tipoDato.getTipo()
+        const promocion = declarado === tipoDato.DECIMAL && delValor === tipoDato.ENTERO
+        if(declarado !== delValor && !promocion){
+            return new Errores("Semántico", "el tipo de dato no coincide con el declarado", this.linea,this.columna)
         }
 
         if(!tabla.setVariable(new Simbolo(this.tipoDato,this.id,resValor))){
@@ -42,4 +48,5 @@ export default class Declaracion extends Instruccion{
         }
         return null
     }
+}
 }

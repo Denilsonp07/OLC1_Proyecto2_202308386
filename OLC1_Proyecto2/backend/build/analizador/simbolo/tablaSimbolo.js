@@ -3,9 +3,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 class TablaSimbolo {
     tablaActual;
     nombreDato;
-    constructor() {
+    padre; // null = ámbito global
+    constructor(padre = null) {
         this.tablaActual = new Map();
         this.nombreDato = "";
+        this.padre = padre;
+    }
+    crearHijo() {
+        return new TablaSimbolo(this);
     }
     getTabla() {
         return this.tablaActual;
@@ -27,7 +32,10 @@ class TablaSimbolo {
         return true;
     }
     getVariable(id) {
-        return this.getTabla().get(id);
+        const local = this.tablaActual.get(id);
+        if (local !== undefined)
+            return local;
+        return this.padre ? this.padre.getVariable(id) : undefined;
     }
 }
 exports.default = TablaSimbolo;

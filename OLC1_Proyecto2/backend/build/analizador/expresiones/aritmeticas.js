@@ -64,6 +64,10 @@ class Aritmeticas extends instruccion_1.Instruccion {
         switch (this.operador) {
             case OperadoresAritmeticos.SUMA:
                 return this.suma(opIzq, opDer);
+            case OperadoresAritmeticos.RESTA:
+                return this.numerica(opIzq, opDer, (a, b) => a - b, "resta");
+            case OperadoresAritmeticos.MULT:
+                return this.numerica(opIzq, opDer, (a, b) => a * b, "multiplicación");
         }
     }
     //entero + entero
@@ -80,8 +84,12 @@ class Aritmeticas extends instruccion_1.Instruccion {
                     case tipo_1.tipoDato.DECIMAL:
                         this.tipoDato.setTipo(tipo_1.tipoDato.DECIMAL);
                         return parseFloat(op1) + parseFloat(op2);
+                    case tipo_1.tipoDato.CADENA:
+                        // sección 26.1: string + cualquier primitivo = concatenación
+                        this.tipoDato.setTipo(tipo_1.tipoDato.CADENA);
+                        return `${op1}${op2}`;
                     default:
-                        return new errores_1.default("Semantico", "suma entre operadores no existe", this.linea, this.columna);
+                        return new errores_1.default("Semántico", "suma entre operadores no existe", this.linea, this.columna);
                 }
             case tipo_1.tipoDato.DECIMAL:
                 switch (tipo2) {
@@ -95,6 +103,18 @@ class Aritmeticas extends instruccion_1.Instruccion {
                         return new errores_1.default("Semantico", "suma entre operadores no existe", this.linea, this.columna);
                 }
         }
+    }
+    // resta y multiplicación: int op int = int; si hay float = float; otra cosa = error
+    numerica(op1, op2, operacion, nombre) {
+        const t1 = this.operando1.tipoDato.getTipo();
+        const t2 = this.operando2.tipoDato.getTipo();
+        const esNum = (t) => t === tipo_1.tipoDato.ENTERO || t === tipo_1.tipoDato.DECIMAL;
+        if (!esNum(t1) || !esNum(t2)) {
+            return new errores_1.default("Semántico", `${nombre} entre operadores no existe`, this.linea, this.columna);
+        }
+        const hayDecimal = t1 === tipo_1.tipoDato.DECIMAL || t2 === tipo_1.tipoDato.DECIMAL;
+        this.tipoDato.setTipo(hayDecimal ? tipo_1.tipoDato.DECIMAL : tipo_1.tipoDato.ENTERO);
+        return operacion(Number(op1), Number(op2));
     }
 }
 exports.default = Aritmeticas;

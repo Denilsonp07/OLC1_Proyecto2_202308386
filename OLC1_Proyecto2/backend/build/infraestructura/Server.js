@@ -22,6 +22,13 @@ class Server {
     get status() {
         return this._status;
     }
+    get packages() {
+        return [...this._packages];
+    }
+    toJSON() {
+        return { cpu: this.cpu, memory: this.memory, disk: this.disk, os: this.os,
+            status: this._status, packages: this.packages };
+    }
     start() {
         if (this._status === "running") {
             return false; // Retorna false si ya estaba activo

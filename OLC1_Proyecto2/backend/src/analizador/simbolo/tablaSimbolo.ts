@@ -4,11 +4,20 @@ import Simbolo from "./simbolo";
 export default class TablaSimbolo{
     private tablaActual: Map<string,Simbolo>
     private nombreDato:string
+    
+    private padre: TablaSimbolo | null   // null = ámbito global
 
-    constructor(){
+    constructor(padre: TablaSimbolo | null = null){
         this.tablaActual= new Map<string,Simbolo>()
         this.nombreDato=""
+        this.padre = padre
     }
+
+
+     public crearHijo(): TablaSimbolo {
+        return new TablaSimbolo(this)
+    }
+
         public getTabla(): Map<string, Simbolo> {
         return this.tablaActual;
     }
@@ -22,6 +31,7 @@ export default class TablaSimbolo{
         this.nombreDato = nombreDato;
     }
 
+
     public setVariable(simbolo: Simbolo): boolean {
         if (this.tablaActual.has(simbolo.getId())) {
             return false;
@@ -30,8 +40,9 @@ export default class TablaSimbolo{
         return true;
     }
 
-    public getVariable(id:string):Simbolo{
-        return <Simbolo>this.getTabla().get(id)
-
+    public getVariable(id:string): Simbolo | undefined {
+        const local = this.tablaActual.get(id)
+        if(local !== undefined) return local
+        return this.padre ? this.padre.getVariable(id) : undefined
     }
 }

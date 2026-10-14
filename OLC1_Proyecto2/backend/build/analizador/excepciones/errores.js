@@ -38,5 +38,8 @@ class Errores {
     toString() {
         return `Error: ${this.tipoError} - ${this.descripcion} en la línea ${this.linea}, columna ${this.columna}`;
     }
+    toJSON() {
+        return { tipo: this.tipoError, descripcion: this.descripcion, linea: this.linea, columna: this.columna };
+    }
 }
 exports.default = Errores;

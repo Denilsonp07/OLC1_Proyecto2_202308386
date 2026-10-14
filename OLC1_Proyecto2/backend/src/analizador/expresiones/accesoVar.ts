@@ -21,7 +21,7 @@ export default class AccesoVar extends Instruccion{
         let valor=tabla.getVariable(this.id)
 
         if(valor==null){
-            return new Errores("Semantico","No se puede acceder al valor de esta variable",this.linea,this.columna)
+            return new Errores("Semántico",`La variable '${this.id}' no ha sido declarada`,this.linea,this.columna)
         }
 
         this.tipoDato=valor.getTipo()

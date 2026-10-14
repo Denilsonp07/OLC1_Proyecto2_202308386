@@ -26,6 +26,17 @@ export class Server {
         return this._status;
     }
 
+    public get packages(): string[] {
+        return [...this._packages];
+    }
+
+
+    public toJSON() {
+        return { cpu: this.cpu, memory: this.memory, disk: this.disk, os: this.os,
+                 status: this._status, packages: this.packages };
+    }
+
+
     public start(): boolean {
         if (this._status === "running") {
             return false; // Retorna false si ya estaba activo
