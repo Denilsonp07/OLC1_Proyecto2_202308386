@@ -1,16 +1,18 @@
 import express from 'express';
 import cors from 'cors';
-
-import Arbol from './analizador/simbolo/arbol';
-import Errores from './analizador/excepciones/errores';
-import { tipoDato } from './analizador/simbolo/tipo';
-import { Server } from './infraestructura/Server';
-
-// Jison genera JavaScript puro (CommonJS), por eso require.
-const parser = require('./analizador/analizador.js');
+import path from 'path';
+import { Worker } from 'worker_threads';
+import { infraVacia, Limites } from './procesar';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 8081;
+
+// Límites de seguridad configurables (secciones 7.5 y 8.3 del enunciado)
+const LIMITES: Limites = {
+    maxInstrucciones: Number(process.env.MAX_INSTRUCCIONES) || 100000,
+    maxProfundidad: Number(process.env.MAX_PROFUNDIDAD) || 1000,
+};
+const TIMEOUT_MS = Number(process.env.TIMEOUT_MS) || 20000;
 
 app.use(cors());
 app.use(express.json());
@@ -19,71 +21,41 @@ app.get('/api/health', (req, res) => {
     res.json({ success: true, message: "El backend del compilador está funcionando." });
 });
 
-const infraVacia = () => ({ servers: [] as any[], services: [] as any[], databases: [] as any[] });
+/**
+ * Ejecuta el análisis en un HILO APARTE (worker) por dos razones:
+ *  1. La pila de Node (~1 MB) no alcanza para 1000 niveles de recursión del lenguaje: cada llamada
+ *     usa varios marcos de JavaScript. El worker se crea con 64 MB de pila.
+ *  2. Un tiempo máximo: si algo se cuelga, se termina el hilo y el servidor sigue vivo.
+ */
+function ejecutarEnWorker(source: string): Promise<any> {
+    return new Promise((resolve) => {
+        const fallo = (descripcion: string, codigo: string) => resolve({
+            success: false, console: [], symbols: [], tokens: [], infrastructure: infraVacia(),
+            errors: [{ tipo: "Ejecución", codigo, descripcion, linea: 0, columna: 1 }]
+        });
 
-app.post('/api/execute', (req, res) => {
+        const worker = new Worker(path.join(__dirname, 'worker.js'), {
+            workerData: { source, limites: LIMITES },
+            resourceLimits: { stackSizeMb: 64, maxOldGenerationSizeMb: 512 },
+        });
+        const timer = setTimeout(() => {
+            worker.terminate();
+            fallo(`La ejecución superó el tiempo máximo de ${TIMEOUT_MS} ms`, "EXE-006");
+        }, TIMEOUT_MS);
+
+        worker.once('message', (resultado) => { clearTimeout(timer); resolve(resultado); });
+        worker.once('error', (e: Error) => { clearTimeout(timer); fallo(`Error interno del intérprete: ${e.message}`, "EXE-000"); });
+    });
+}
+
+app.post('/api/execute', async (req, res) => {
     // Express 5: req.body es undefined si no llegó JSON
     const source = req.body?.source;
     if (typeof source !== 'string') {
         return res.status(400).json({ success: false, message: "El campo 'source' (string) es obligatorio" });
     }
-
-    // ---- 1. Léxico + sintáctico (Jison LANZA excepción si falla) ----
-    let ast: any[];
-    try {
-        ast = parser.parse(source);
-    } catch (error: any) {
-        const msg: string = error.message || "Error en el parser";
-        const hash = error.hash ?? {};
-        return res.json({
-            success: false, console: [], symbols: [], tokens: [], infrastructure: infraVacia(),
-            errors: [{
-                tipo: msg.startsWith("Lexical error") ? "Léxico" : "Sintáctico",
-                descripcion: msg,
-                linea: hash.loc?.first_line ?? (typeof hash.line === 'number' ? hash.line + 1 : 0),
-                columna: hash.loc?.first_column ?? 0
-            }]
-        });
-    }
-
-    // ---- 2. Ejecución (try/catch aparte) ----
-    const arbol = new Arbol(ast);
-    const entornoGlobal = arbol.getTablaGlobal();   // una sola tabla global: la del árbol
-    const errores = arbol.getErrores();
-
-    try {
-        for (const instruccion of ast) {
-            const resultado = instruccion.interpretar(arbol, entornoGlobal);
-            if (resultado instanceof Errores) errores.push(resultado);   // ANTES se descartaba
-        }
-    } catch (error: any) {
-        errores.push(new Errores("Ejecución", `Error interno del intérprete: ${error.message}`, 0, 0));
-    }
-
-    // ---- 3. Respuesta ----
-    const symbols: any[] = [];
-    const infrastructure = infraVacia();
-    for (const [id, simbolo] of entornoGlobal.getTabla()) {
-        const valor = simbolo.getValor();
-        if (valor instanceof Server) {
-            infrastructure.servers.push({ name: id, ...valor.toJSON() });
-            symbols.push({ identificador: id, tipo: "SERVER", valor: valor.status });
-        } else {
-            symbols.push({ identificador: id, tipo: tipoDato[simbolo.getTipo().getTipo()], valor });
-        }
-    }
-
-    const consola = arbol.getConsola();
-    res.json({
-        success: errores.length === 0,
-        console: consola === "" ? [] : consola.replace(/\n$/, "").split("\n"),
-        errors: errores,
-        symbols,
-        tokens: [],
-        infrastructure
-    });
+    res.json(await ejecutarEnWorker(source));
 });
-
 
 app.listen(PORT, () => {
     console.log(`Servidor AutoInfra corriendo en http://localhost:${PORT}`);

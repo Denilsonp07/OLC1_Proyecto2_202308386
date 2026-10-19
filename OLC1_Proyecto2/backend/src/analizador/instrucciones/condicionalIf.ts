@@ -5,54 +5,30 @@
 //}
 //else{  Instruccion}
 
-import { Instruccion } from "../abstracto/instruccion";
-import Errores from "../excepciones/errores";
-import Arbol from "../simbolo/arbol";
-import TablaSimbolo from "../simbolo/tablaSimbolo";
-import Tipo, { tipoDato } from "../simbolo/tipo";
+import { Instruccion } from "../abstracto/instruccion"
+import Errores from "../excepciones/errores"
+import { ejecutarBloque } from "../abstracto/bloque"
+import Arbol from "../simbolo/arbol"
+import TablaSimbolo from "../simbolo/tablaSimbolo"
+import Tipo, { tipoDato, nombreTipo } from "../simbolo/tipo"
 
-
-export default class CondicionalIf extends Instruccion{
-    private condicion:Instruccion
-    private instruccionesIf: Instruccion[]
-    private instruccionesElse: Instruccion[] | undefined
-    
-    constructor(condicion: Instruccion, instruccionesIf: Instruccion[], instruccionesElse: Instruccion[] | undefined, linea: number, columna: number){
-        super(new Tipo(tipoDato.VOID), linea, columna);
-        this.condicion = condicion;
-        this.instruccionesIf = instruccionesIf;
-        this.instruccionesElse = instruccionesElse;
+// if cond { ... } else { ... }      (else if = un else que contiene otro if)
+export default class CondicionalIf extends Instruccion {
+    constructor(private condicion: Instruccion, private instruccionesIf: Instruccion[],
+                private instruccionesElse: Instruccion[] | undefined, linea: number, columna: number) {
+        super(new Tipo(tipoDato.VOID), linea, columna)
     }
 
     interpretar(arbol: Arbol, tabla: TablaSimbolo) {
-        let cond=this.condicion.interpretar(arbol,tabla)
-
-        if(cond instanceof Errores) return cond
-
-        if( this.condicion.tipoDato.getTipo() != tipoDato.BOOLEAN){
-            return new Errores("Semantico", "La condicion debe ser un booleano",this.linea, this.columna)
+        const cond = this.condicion.interpretar(arbol, tabla)
+        if (cond instanceof Errores) return cond
+        if (this.condicion.tipoDato.getTipo() !== tipoDato.BOOLEAN) {
+            return new Errores("Semántico", `La condición del if debe producir bool, produjo ${nombreTipo(this.condicion.tipoDato)}`, this.linea, this.columna, "SEM-001")
         }
-
-        if(cond){
-            const tablaIf = tabla.crearHijo()
-            for(let i of this.instruccionesIf){
-                if(i instanceof Instruccion){
-                    let resultado = i.interpretar(arbol,tablaIf)
-                    if(resultado instanceof Errores) return resultado
-                }
-            }
-        }else {
-           if(this.instruccionesElse != undefined){
-                const tablaElse = tabla.crearHijo()
-                for(let i of this.instruccionesElse){
-                    if(i instanceof Instruccion){
-                        let resultado= i.interpretar(arbol,tablaElse)
-                        if(resultado instanceof Errores) return resultado
-                    }
-                }
-            }
-        }
-
-        
+        // Cada bloque tiene su propio ámbito. El resultado (Errores / Senal) sube tal cual:
+        // el if NO absorbe break/continue/return.
+        if (cond) return ejecutarBloque(this.instruccionesIf, arbol, tabla.crearHijo())
+        if (this.instruccionesElse !== undefined) return ejecutarBloque(this.instruccionesElse, arbol, tabla.crearHijo())
+        return undefined
     }
 }

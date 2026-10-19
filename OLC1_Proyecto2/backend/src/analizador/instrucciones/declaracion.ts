@@ -1,52 +1,37 @@
 
 
-import { Instruccion } from "../abstracto/instruccion";
-import Errores from "../excepciones/errores";
-import Arbol from "../simbolo/arbol";
-import Simbolo from "../simbolo/simbolo";
-import TablaSimbolo from "../simbolo/tablaSimbolo";
-
-import Tipo, { tipoDato } from "../simbolo/tipo";
+import { Instruccion } from "../abstracto/instruccion"
+import Errores from "../excepciones/errores"
+import Arbol from "../simbolo/arbol"
+import Simbolo from "../simbolo/simbolo"
 
 
-//id 
-//valor
-//tipoDato
+import TablaSimbolo from "../simbolo/tablaSimbolo"
+import Tipo, { compatible, nombreTipo, valorPorDefecto } from "../simbolo/tipo"
 
-export default class Declaracion extends Instruccion{
-    private id:string
-    private valor:Instruccion|null
-
-    constructor(tipo:Tipo, linea:number, columna:number, id:string, valor:Instruccion){
-        super(tipo,linea,columna)
-        this.id=id
-        this.valor=valor
+// int x = 5;     string[] p = ["a"];     int y;   (sin valor -> valor por defecto, sección 5.1)
+export default class Declaracion extends Instruccion {
+    constructor(tipo: Tipo, linea: number, columna: number, private id: string, private valor: Instruccion | null) {
+        super(tipo, linea, columna)
     }
 
     interpretar(arbol: Arbol, tabla: TablaSimbolo) {
-        if(this.valor==null){
-            if(!tabla.setVariable(new Simbolo(this.tipoDato,this.id,null))){
-                return new Errores('Semantico', "no se pude declarar la variable", this.linea, this.columna)
+        let valor: any
+        if (this.valor === null) {
+            valor = valorPorDefecto(this.tipoDato)
+        } else {
+            valor = this.valor.interpretar(arbol, tabla)
+            if (valor instanceof Errores) return valor
+            // tipo DECLARADO vs tipo de la EXPRESIÓN (int -> float permitido)
+            if (!compatible(this.tipoDato, this.valor.tipoDato)) {
+                return new Errores("Semántico",
+                    `No se puede asignar ${nombreTipo(this.valor.tipoDato)} a '${this.id}' de tipo ${nombreTipo(this.tipoDato)}`,
+                    this.linea, this.columna, "SEM-001")
             }
-            return
         }
-
-        let resValor=this.valor.interpretar(arbol,tabla)
-        if(resValor instanceof Errores) return resValor
-
-        if(this.tipoDato.getTipo() != this.tipoDato.getTipo()){
-
-        const declarado = this.tipoDato.getTipo()
-        const delValor  = this.valor.tipoDato.getTipo()
-        const promocion = declarado === tipoDato.DECIMAL && delValor === tipoDato.ENTERO
-        if(declarado !== delValor && !promocion){
-            return new Errores("Semántico", "el tipo de dato no coincide con el declarado", this.linea,this.columna)
+        if (!tabla.setVariable(new Simbolo(this.tipoDato, this.id, valor))) {
+            return new Errores("Semántico", `El identificador '${this.id}' ya fue declarado en este ámbito`, this.linea, this.columna, "SEM-002")
         }
-
-        if(!tabla.setVariable(new Simbolo(this.tipoDato,this.id,resValor))){
-            return new Errores("semantico", "La variable ya existe", this.linea,this.columna)
-        }
-        return null
+        return undefined
     }
-}
 }

@@ -1,120 +1,58 @@
+import { Instruccion } from "../abstracto/instruccion"
+import Errores from "../excepciones/errores"
+import Arbol from "../simbolo/arbol"
+import TablaSimbolo from "../simbolo/tablaSimbolo"
+import Tipo, { tipoDato, esNumerico, nombreTipo, aTexto } from "../simbolo/tipo"
 
+export enum OperadoresAritmeticos { SUMA, RESTA, MULT, DIV, MOD }
+const SIMBOLO = ["+", "-", "*", "/", "%"]
 
-import { Instruccion } from "../abstracto/instruccion";
-import Errores from "../excepciones/errores";
-import Arbol from "../simbolo/arbol";
-import TablaSimbolo from "../simbolo/tablaSimbolo";
-import Tipo, { tipoDato } from "../simbolo/tipo";
+// Tabla de la sección 26.1
+export default class Aritmeticas extends Instruccion {
+    constructor(private operador: OperadoresAritmeticos, private operando1: Instruccion,
+                private operando2: Instruccion, linea: number, columna: number) {
+        super(new Tipo(tipoDato.ENTERO), linea, columna)
+    }
 
+    private invalida(t1: Tipo, t2: Tipo) {
+        return new Errores("Semántico",
+            `Operación '${SIMBOLO[this.operador]}' no válida entre ${nombreTipo(t1)} y ${nombreTipo(t2)}`,
+            this.linea, this.columna, "SEM-008")
+    }
 
+    interpretar(arbol: Arbol, tabla: TablaSimbolo) {
+        const a = this.operando1.interpretar(arbol, tabla)
+        if (a instanceof Errores) return a
+        const t1 = this.operando1.tipoDato.clonar()
+        const b = this.operando2.interpretar(arbol, tabla)
+        if (b instanceof Errores) return b
+        const t2 = this.operando2.tipoDato.clonar()
+        const n1 = t1.getTipo(), n2 = t2.getTipo()
 
-//E+E
-//E-E
-//E*E
-
-export default class Aritmeticas extends Instruccion{
-        private operando1: Instruccion
-        private operando2: Instruccion
-
-        private operador: OperadoresAritmeticos
-
-        constructor(operador:OperadoresAritmeticos, operando1: Instruccion, operando2:Instruccion, linea:number, columna:number){
-            super(new Tipo(tipoDato.ENTERO), linea, columna)
-            this.operador=operador
-            this.operando1=operando1
-            this.operando2=operando2
-
-        }
-        interpretar(arbol: Arbol, tabla: TablaSimbolo) {
-
-            let opIzq, opDer=null
-
-            opIzq=this.operando1.interpretar(arbol,tabla)
-            if(opIzq instanceof Errores) return opIzq
-            opDer=this.operando2.interpretar(arbol,tabla)
-            if(opDer instanceof Errores) return opDer
-
-            switch (this.operador){
-                case OperadoresAritmeticos.SUMA:
-                    return this.suma(opIzq,opDer)
-                case OperadoresAritmeticos.RESTA:
-                    return this.numerica(opIzq,opDer,(a,b)=>a-b,"resta")
-                case OperadoresAritmeticos.MULT:
-                    return this.numerica(opIzq,opDer,(a,b)=>a*b,"multiplicación")
-            }
-
-            
-        }
-        //entero + entero
-        //entero + decimal
-
-        suma(op1:any, op2:any){
-            let tipo1 = this.operando1?.tipoDato.getTipo()
-            let tipo2 = this.operando2?.tipoDato.getTipo()
-
-            switch (tipo1){
-                case tipoDato.ENTERO:
-                    switch(tipo2){
-                        case tipoDato.ENTERO:
-                            this.tipoDato.setTipo(tipoDato.ENTERO)
-                            return parseInt(op1)+ parseInt(op2)
-
-                        case tipoDato.DECIMAL:
-                            this.tipoDato.setTipo(tipoDato.DECIMAL)
-                            return parseFloat(op1)+ parseFloat(op2)
-
-                        
-                        case tipoDato.CADENA:
-                            // sección 26.1: string + cualquier primitivo = concatenación
-                            this.tipoDato.setTipo(tipoDato.CADENA)
-                            return `${op1}${op2}`
-                        default:
-                        return new Errores("Semántico","suma entre operadores no existe", this.linea, this.columna)
-
-
-                    }
-                case tipoDato.DECIMAL:
-                    switch(tipo2){
-                        case tipoDato.ENTERO:
-                            this.tipoDato.setTipo(tipoDato.DECIMAL)
-                            return parseFloat(op1)+ parseFloat(op2)
-
-                        case tipoDato.DECIMAL:
-                            this.tipoDato.setTipo(tipoDato.DECIMAL)
-                            return parseFloat(op1)+ parseFloat(op2)
-
-                        default:
-                            return new Errores("Semantico","suma entre operadores no existe", this.linea, this.columna)
-
-                    }
-            }
-
-
-        
+        // string + cualquier primitivo = concatenación
+        if (this.operador === OperadoresAritmeticos.SUMA && n1 === tipoDato.CADENA) {
+            if (!(esNumerico(n2) || n2 === tipoDato.CADENA || n2 === tipoDato.BOOLEAN)) return this.invalida(t1, t2)
+            this.tipoDato = new Tipo(tipoDato.CADENA)
+            return aTexto(a, t1) + aTexto(b, t2)
         }
 
-                // resta y multiplicación: int op int = int; si hay float = float; otra cosa = error
-        numerica(op1:any, op2:any, operacion:(a:number,b:number)=>number, nombre:string){
-            const t1 = this.operando1.tipoDato.getTipo()
-            const t2 = this.operando2.tipoDato.getTipo()
-            const esNum = (t:tipoDato)=> t===tipoDato.ENTERO || t===tipoDato.DECIMAL
-            if(!esNum(t1) || !esNum(t2)){
-                return new Errores("Semántico",`${nombre} entre operadores no existe`, this.linea, this.columna)
-            }
-            const hayDecimal = t1===tipoDato.DECIMAL || t2===tipoDato.DECIMAL
-            this.tipoDato.setTipo(hayDecimal ? tipoDato.DECIMAL : tipoDato.ENTERO)
-            return operacion(Number(op1), Number(op2))
+        if (!esNumerico(n1) || !esNumerico(n2)) return this.invalida(t1, t2)
+        const hayDecimal = n1 === tipoDato.DECIMAL || n2 === tipoDato.DECIMAL
+
+        switch (this.operador) {
+            case OperadoresAritmeticos.SUMA:
+                this.tipoDato = new Tipo(hayDecimal ? tipoDato.DECIMAL : tipoDato.ENTERO); return a + b
+            case OperadoresAritmeticos.RESTA:
+                this.tipoDato = new Tipo(hayDecimal ? tipoDato.DECIMAL : tipoDato.ENTERO); return a - b
+            case OperadoresAritmeticos.MULT:
+                this.tipoDato = new Tipo(hayDecimal ? tipoDato.DECIMAL : tipoDato.ENTERO); return a * b
+            case OperadoresAritmeticos.DIV:
+                if (b === 0) return new Errores("Ejecución", "División entre cero", this.linea, this.columna, "EXE-001")
+                this.tipoDato = new Tipo(tipoDato.DECIMAL); return a / b          // siempre float: 5/2 = 2.5
+            case OperadoresAritmeticos.MOD:
+                if (n1 !== tipoDato.ENTERO || n2 !== tipoDato.ENTERO) return this.invalida(t1, t2)   // % solo enteros
+                if (b === 0) return new Errores("Ejecución", "Módulo entre cero", this.linea, this.columna, "EXE-001")
+                this.tipoDato = new Tipo(tipoDato.ENTERO); return a % b
         }
-
-
-
-
-    
-
-}
-
-export enum OperadoresAritmeticos{
-    SUMA,
-    RESTA,
-    MULT
+    }
 }

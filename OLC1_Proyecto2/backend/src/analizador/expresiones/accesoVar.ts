@@ -9,23 +9,20 @@ import TablaSimbolo from "../simbolo/tablaSimbolo";
 import Tipo, { tipoDato } from "../simbolo/tipo";
 
 
-export default class AccesoVar extends Instruccion{
-    private id:string 
+export default class AccesoVar extends Instruccion {
+    private id: string
 
-    constructor(id:string, linea:number, columna:number){
+    constructor(id: string, linea: number, columna: number) {
         super(new Tipo(tipoDato.VOID), linea, columna)
-        this.id=id
+        this.id = id
     }
 
     interpretar(arbol: Arbol, tabla: TablaSimbolo) {
-        let valor=tabla.getVariable(this.id)
-
-        if(valor==null){
-            return new Errores("Semántico",`La variable '${this.id}' no ha sido declarada`,this.linea,this.columna)
+        const simbolo = tabla.getVariable(this.id)
+        if (simbolo == null) {
+            return new Errores("Semántico", `La variable '${this.id}' no ha sido declarada`, this.linea, this.columna, "SEM-003")
         }
-
-        this.tipoDato=valor.getTipo()
-
-        return valor.getValor()
+        this.tipoDato = simbolo.getTipo()
+        return simbolo.getValor()
     }
 }

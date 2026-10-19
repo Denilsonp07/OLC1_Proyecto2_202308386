@@ -1,75 +1,53 @@
+import { Instruccion } from "../abstracto/instruccion"
+import Errores from "../excepciones/errores"
+import Arbol from "../simbolo/arbol"
+import TablaSimbolo from "../simbolo/tablaSimbolo"
+import Tipo, { tipoDato, esNumerico, esRecurso, nombreTipo } from "../simbolo/tipo"
 
-import { Instruccion } from "../abstracto/instruccion";
-import Errores from "../excepciones/errores";
-import Arbol from "../simbolo/arbol";
-import TablaSimbolo from "../simbolo/tablaSimbolo";
-import Tipo, { tipoDato } from "../simbolo/tipo";
+export enum Op_relacionales { IGUALDAD, DESIGUALDAD, MENOR, MENOR_IGUAL, MAYOR, MAYOR_IGUAL }
+const SIMBOLO = ["==", "!=", "<", "<=", ">", ">="]
 
-
-//E<E  TRUE | FALSE
-export default class Relacionales extends Instruccion{
-
-    private operador1:Instruccion
-    private operador2:Instruccion
-    private Operacion:Op_relacionales
-
-    private esNumerico(t:tipoDato){
-        return t===tipoDato.ENTERO || t===tipoDato.DECIMAL
+// Secciones 26.2 y 26.3
+export default class Relacionales extends Instruccion {
+    constructor(private Operacion: Op_relacionales, linea: number, columna: number,
+                private operador1: Instruccion, private operador2: Instruccion) {
+        super(new Tipo(tipoDato.BOOLEAN), linea, columna)
     }
 
-    constructor(operacion:Op_relacionales,linea:number, columna:number,op1:Instruccion,op2:Instruccion){
-        super(new Tipo(tipoDato.BOOLEAN), linea,columna)
-        this.Operacion=operacion
-        this.operador1=op1
-        this.operador2=op2
-    }
     interpretar(arbol: Arbol, tabla: TablaSimbolo) {
+        const a = this.operador1.interpretar(arbol, tabla)
+        if (a instanceof Errores) return a
+        const t1 = this.operador1.tipoDato.clonar()
+        const b = this.operador2.interpretar(arbol, tabla)
+        if (b instanceof Errores) return b
+        const t2 = this.operador2.tipoDato.clonar()
+        const n1 = t1.getTipo(), n2 = t2.getTipo()
+        this.tipoDato = new Tipo(tipoDato.BOOLEAN)
 
-        let opIzq, opDer=null
+        const invalida = () => new Errores("Semántico",
+            `Operación '${SIMBOLO[this.Operacion]}' no válida entre ${nombreTipo(t1)} y ${nombreTipo(t2)}`,
+            this.linea, this.columna, "SEM-008")
 
-        opIzq=this.operador1.interpretar(arbol,tabla)
-        if(opIzq instanceof Errores) return opIzq
-
-        opDer= this.operador2.interpretar(arbol,tabla)
-        if(opDer instanceof Errores ) return opDer
-
-        switch(this.Operacion){
-            case Op_relacionales.IGUALDAD:
-                return this.igualdad(opIzq, opDer)
+        switch (this.Operacion) {
             case Op_relacionales.MENOR:
-                return this.menor(opIzq,opDer)
-                
+            case Op_relacionales.MENOR_IGUAL:
+            case Op_relacionales.MAYOR:
+            case Op_relacionales.MAYOR_IGUAL:
+                if (!esNumerico(n1) || !esNumerico(n2)) return invalida()
+                if (this.Operacion === Op_relacionales.MENOR) return a < b
+                if (this.Operacion === Op_relacionales.MENOR_IGUAL) return a <= b
+                if (this.Operacion === Op_relacionales.MAYOR) return a > b
+                return a >= b
+
+            default: {   // == y !=
+                let iguales: boolean
+                if (esNumerico(n1) && esNumerico(n2)) iguales = a === b
+                else if (n1 === n2 && (n1 === tipoDato.CADENA || n1 === tipoDato.BOOLEAN)) iguales = a === b
+                // recursos del mismo tipo: igualdad de REFERENCIA (sección 5.2)
+                else if (esRecurso(n1) && esRecurso(n2) && (n1 === n2 || n1 === tipoDato.RECURSO || n2 === tipoDato.RECURSO)) iguales = a === b
+                else return invalida()
+                return this.Operacion === Op_relacionales.IGUALDAD ? iguales : !iguales
+            }
         }
-
-        
-
     }
-
-    igualdad(op1:any, op2:any){
-        let tipo1= this.operador1.tipoDato.getTipo()
-        let tipo2= this.operador2.tipoDato.getTipo()
-        this.tipoDato.setTipo(tipoDato.BOOLEAN)
-
-        if(this.esNumerico(tipo1) && this.esNumerico(tipo2)) return Number(op1) === Number(op2)
-        if(tipo1===tipoDato.CADENA  && tipo2===tipoDato.CADENA)  return op1 === op2
-        if(tipo1===tipoDato.BOOLEAN && tipo2===tipoDato.BOOLEAN) return op1 === op2
-        return new Errores("Semántico", "Los operandos de == no son compatibles", this.linea, this.columna)
-    }
-
-
-    menor(op1:any, op2:any){
-        let tipo1= this.operador1.tipoDato.getTipo()
-        let tipo2= this.operador2.tipoDato.getTipo()
-        this.tipoDato.setTipo(tipoDato.BOOLEAN)
-
-        if(this.esNumerico(tipo1) && this.esNumerico(tipo2)) return Number(op1) < Number(op2)
-        return new Errores("Semántico", "El operador < requiere int o float en ambos lados", this.linea, this.columna)
-    }
-
-
-    
-}
-export enum Op_relacionales{
-    IGUALDAD,
-    MENOR
 }

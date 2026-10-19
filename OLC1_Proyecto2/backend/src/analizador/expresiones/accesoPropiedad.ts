@@ -1,45 +1,35 @@
 
 
 
-import { Instruccion } from "../abstracto/instruccion";
-import Errores from "../excepciones/errores";
-import Arbol from "../simbolo/arbol";
-import TablaSimbolo from "../simbolo/tablaSimbolo";
-import Tipo, { tipoDato } from "../simbolo/tipo";
-import { Server } from "../../infraestructura/Server";
+import { Instruccion } from "../abstracto/instruccion"
+import Errores from "../excepciones/errores"
+import Arbol from "../simbolo/arbol"
 
-const PROPS_SERVER: Record<string, tipoDato> = {
-    cpu: tipoDato.ENTERO,
-    memory: tipoDato.ENTERO,
-    disk: tipoDato.ENTERO,
-    os: tipoDato.CADENA,
-    status: tipoDato.CADENA,
-};
+import TablaSimbolo from "../simbolo/tablaSimbolo"
+import Tipo, { tipoDato } from "../simbolo/tipo"
+import { Recurso } from "../../infraestructura/recursos"
+import { getDef } from "../../infraestructura/validacion"
 
-// recurso.propiedad   (ej: backend.memory)
+// recurso.propiedad   (encadenable: api.host.os, api.dependsOn[0].status)
 export default class AccesoPropiedad extends Instruccion {
-    private id: string;
-    private propiedad: string;
-
-    constructor(id: string, propiedad: string, linea: number, columna: number) {
-        super(new Tipo(tipoDato.VOID), linea, columna);
-        this.id = id;
-        this.propiedad = propiedad;
+    constructor(private base: Instruccion, private propiedad: string, linea: number, columna: number) {
+        super(new Tipo(tipoDato.VOID), linea, columna)
     }
 
     interpretar(arbol: Arbol, tabla: TablaSimbolo) {
-        const simbolo = tabla.getVariable(this.id);
-        if (simbolo == null) {
-            return new Errores("Semántico", `'${this.id}' no ha sido declarado`, this.linea, this.columna);
+        const r = this.base.interpretar(arbol, tabla)
+        if (r instanceof Errores) return r
+        if (r === null) {
+            return new Errores("Ejecución", `No se puede leer '${this.propiedad}' de un valor null (¿el servicio ya fue desplegado?)`, this.linea, this.columna, "EXE-004")
         }
-        const recurso = simbolo.getValor();
-        if (!(recurso instanceof Server)) {
-            return new Errores("Semántico", `'${this.id}' no es un recurso`, this.linea, this.columna);
+        if (!(r instanceof Recurso)) {
+            return new Errores("Semántico", `Solo los recursos tienen propiedades; no se puede leer '${this.propiedad}'`, this.linea, this.columna, "SEM-008")
         }
-        if (!(this.propiedad in PROPS_SERVER)) {
-            return new Errores("Semántico", `La propiedad '${this.propiedad}' no existe en server`, this.linea, this.columna);
+        const def = getDef(r.tipoRecurso, this.propiedad)
+        if (!def) {
+            return new Errores("Semántico", `La propiedad '${this.propiedad}' no existe en ${r.tipoRecurso} '${r.nombre}'`, this.linea, this.columna, "SEM-004")
         }
-        this.tipoDato.setTipo(PROPS_SERVER[this.propiedad]);
-        return (recurso as any)[this.propiedad];
+        this.tipoDato = def.tipo.clonar()
+        return (r as any)[this.propiedad]
     }
 }
