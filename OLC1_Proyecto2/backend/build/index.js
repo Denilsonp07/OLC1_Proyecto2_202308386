@@ -5,81 +5,71 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
-const arbol_1 = __importDefault(require("./analizador/simbolo/arbol"));
-const errores_1 = __importDefault(require("./analizador/excepciones/errores"));
-const tipo_1 = require("./analizador/simbolo/tipo");
-const Server_1 = require("./infraestructura/Server");
-// Jison genera JavaScript puro (CommonJS), por eso require.
-const parser = require('./analizador/analizador.js');
+const path_1 = __importDefault(require("path"));
+const worker_threads_1 = require("worker_threads");
+const procesar_1 = require("./procesar");
 const app = (0, express_1.default)();
 const PORT = Number(process.env.PORT) || 8081;
+// Límites de seguridad configurables (secciones 7.5 y 8.3 del enunciado)
+const LIMITES = {
+    maxInstrucciones: Number(process.env.MAX_INSTRUCCIONES) || 100000,
+    maxProfundidad: Number(process.env.MAX_PROFUNDIDAD) || 1000,
+};
+const TIMEOUT_MS = Number(process.env.TIMEOUT_MS) || 20000;
 app.use((0, cors_1.default)());
 app.use(express_1.default.json());
 app.get('/api/health', (req, res) => {
     res.json({ success: true, message: "El backend del compilador está funcionando." });
 });
-const infraVacia = () => ({ servers: [], services: [], databases: [] });
-app.post('/api/execute', (req, res) => {
-    // Express 5: req.body es undefined si no llegó JSON
-    const source = req.body?.source;
-    if (typeof source !== 'string') {
-        return res.status(400).json({ success: false, message: "El campo 'source' (string) es obligatorio" });
-    }
-    // ---- 1. Léxico + sintáctico (Jison LANZA excepción si falla) ----
-    let ast;
-    try {
-        ast = parser.parse(source);
-    }
-    catch (error) {
-        const msg = error.message || "Error en el parser";
-        const hash = error.hash ?? {};
-        return res.json({
-            success: false, console: [], symbols: [], tokens: [], infrastructure: infraVacia(),
-            errors: [{
-                    tipo: msg.startsWith("Lexical error") ? "Léxico" : "Sintáctico",
-                    descripcion: msg,
-                    linea: hash.loc?.first_line ?? (typeof hash.line === 'number' ? hash.line + 1 : 0),
-                    columna: hash.loc?.first_column ?? 0
-                }]
+/**
+ * Ejecuta el análisis en un HILO APARTE (worker) por dos razones:
+ *  1. La pila de Node (~1 MB) no alcanza para 1000 niveles de recursión del lenguaje: cada llamada
+ *     usa varios marcos de JavaScript. El worker se crea con 64 MB de pila.
+ *  2. Un tiempo máximo: si algo se cuelga, se termina el hilo y el servidor sigue vivo.
+ */
+function ejecutarEnWorker(source, ejecutar) {
+    return new Promise((resolve) => {
+        const fallo = (descripcion, codigo) => resolve({
+            success: false, console: [], symbols: [], tokens: [], infrastructure: (0, procesar_1.infraVacia)(),
+            errors: [{ tipo: "Ejecución", codigo, descripcion, linea: 0, columna: 1 }]
         });
-    }
-    // ---- 2. Ejecución (try/catch aparte) ----
-    const arbol = new arbol_1.default(ast);
-    const entornoGlobal = arbol.getTablaGlobal(); // una sola tabla global: la del árbol
-    const errores = arbol.getErrores();
-    try {
-        for (const instruccion of ast) {
-            const resultado = instruccion.interpretar(arbol, entornoGlobal);
-            if (resultado instanceof errores_1.default)
-                errores.push(resultado); // ANTES se descartaba
-        }
-    }
-    catch (error) {
-        errores.push(new errores_1.default("Ejecución", `Error interno del intérprete: ${error.message}`, 0, 0));
-    }
-    // ---- 3. Respuesta ----
-    const symbols = [];
-    const infrastructure = infraVacia();
-    for (const [id, simbolo] of entornoGlobal.getTabla()) {
-        const valor = simbolo.getValor();
-        if (valor instanceof Server_1.Server) {
-            infrastructure.servers.push({ name: id, ...valor.toJSON() });
-            symbols.push({ identificador: id, tipo: "SERVER", valor: valor.status });
-        }
-        else {
-            symbols.push({ identificador: id, tipo: tipo_1.tipoDato[simbolo.getTipo().getTipo()], valor });
-        }
-    }
-    const consola = arbol.getConsola();
-    res.json({
-        success: errores.length === 0,
-        console: consola === "" ? [] : consola.replace(/\n$/, "").split("\n"),
-        errors: errores,
-        symbols,
-        tokens: [],
-        infrastructure
+        const worker = new worker_threads_1.Worker(path_1.default.join(__dirname, 'worker.js'), {
+            workerData: { source, limites: LIMITES, ejecutar },
+            resourceLimits: { stackSizeMb: 64, maxOldGenerationSizeMb: 512 },
+        });
+        const timer = setTimeout(() => {
+            worker.terminate();
+            fallo(`La ejecución superó el tiempo máximo de ${TIMEOUT_MS} ms`, "EXE-006");
+        }, TIMEOUT_MS);
+        worker.once('message', (resultado) => { clearTimeout(timer); resolve(resultado); });
+        worker.once('error', (e) => { clearTimeout(timer); fallo(`Error interno del intérprete: ${e.message}`, "EXE-000"); });
     });
-});
+}
+// Endpoints de la sección 24.4. Todos reciben { "source": "..." } y devuelven JSON.
+//   execute  -> análisis completo + ejecución (todo el resultado)
+//   analyze  -> léxico + sintáctico (+ AST) SIN ejecutar
+//   tokens / ast / symbols / errors -> solo esa parte del resultado
+const ENDPOINTS = {
+    execute: { ejecutar: true },
+    analyze: { ejecutar: false },
+    tokens: { ejecutar: false, campos: ['success', 'tokens', 'errors'] },
+    ast: { ejecutar: false, campos: ['success', 'ast', 'errors'] },
+    symbols: { ejecutar: true, campos: ['success', 'symbols', 'errors'] },
+    errors: { ejecutar: true, campos: ['success', 'errors'] },
+};
+for (const [nombre, cfg] of Object.entries(ENDPOINTS)) {
+    app.post(`/api/${nombre}`, async (req, res) => {
+        // Express 5: req.body es undefined si no llegó JSON
+        const source = req.body?.source;
+        if (typeof source !== 'string') {
+            return res.status(400).json({ success: false, message: "El campo 'source' (string) es obligatorio" });
+        }
+        const resultado = await ejecutarEnWorker(source, cfg.ejecutar);
+        if (!cfg.campos)
+            return res.json(resultado);
+        res.json(Object.fromEntries(cfg.campos.map(c => [c, resultado[c]])));
+    });
+}
 app.listen(PORT, () => {
     console.log(`Servidor AutoInfra corriendo en http://localhost:${PORT}`);
 });

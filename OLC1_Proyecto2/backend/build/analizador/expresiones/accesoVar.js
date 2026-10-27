@@ -49,12 +49,12 @@ class AccesoVar extends instruccion_1.Instruccion {
         this.id = id;
     }
     interpretar(arbol, tabla) {
-        let valor = tabla.getVariable(this.id);
-        if (valor == null) {
-            return new errores_1.default("Semántico", `La variable '${this.id}' no ha sido declarada`, this.linea, this.columna);
+        const simbolo = tabla.getVariable(this.id);
+        if (simbolo == null) {
+            return new errores_1.default("Semántico", `La variable '${this.id}' no ha sido declarada`, this.linea, this.columna, "SEM-003");
         }
-        this.tipoDato = valor.getTipo();
-        return valor.getValor();
+        this.tipoDato = simbolo.getTipo();
+        return simbolo.getValor();
     }
 }
 exports.default = AccesoVar;

@@ -23,6 +23,9 @@ export default class AsignacionPropiedad extends Instruccion {
     interpretar(arbol: Arbol, tabla: TablaSimbolo) {
         const r = this.base.interpretar(arbol, tabla)
         if (r instanceof Errores) return r
+        if (r === null || r === undefined) {
+            return new Errores("Ejecución", `No se puede modificar '${this.propiedad}' de un valor null`, this.linea, this.columna, "EXE-004")
+        }
         if (!(r instanceof Recurso)) {
             return new Errores("Semántico", `Solo los recursos tienen propiedades; no se puede asignar '${this.propiedad}'`, this.linea, this.columna, "SEM-008")
         }

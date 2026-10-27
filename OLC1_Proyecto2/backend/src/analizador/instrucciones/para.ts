@@ -14,7 +14,7 @@ export default class Para extends Instruccion {
     }
 
     interpretar(arbol: Arbol, tablaPadre: TablaSimbolo) {
-        const tablaFor = tablaPadre.crearHijo()      // 'i' vive aquí y no se filtra al exterior
+        const tablaFor = tablaPadre.crearHijo("for")      // 'i' vive aquí y no se filtra al exterior
         const ini = this.inicio.interpretar(arbol, tablaFor)
         if (ini instanceof Errores) return ini
 
@@ -29,7 +29,7 @@ export default class Para extends Instruccion {
             const limite = arbol.tick(this.linea, this.columna)
             if (limite) return limite
 
-            const r = ejecutarBloque(this.cuerpo, arbol, tablaFor.crearHijo())
+            const r = ejecutarBloque(this.cuerpo, arbol, tablaFor.crearHijo("cuerpo"))   // ámbito nuevo por iteración
             if (r instanceof Errores) return r
             if (r instanceof Senal) {
                 if (r.tipo === TipoSenal.BREAK) break

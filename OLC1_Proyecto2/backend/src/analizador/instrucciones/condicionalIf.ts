@@ -27,8 +27,8 @@ export default class CondicionalIf extends Instruccion {
         }
         // Cada bloque tiene su propio ámbito. El resultado (Errores / Senal) sube tal cual:
         // el if NO absorbe break/continue/return.
-        if (cond) return ejecutarBloque(this.instruccionesIf, arbol, tabla.crearHijo())
-        if (this.instruccionesElse !== undefined) return ejecutarBloque(this.instruccionesElse, arbol, tabla.crearHijo())
+        if (cond) return ejecutarBloque(this.instruccionesIf, arbol, tabla.crearHijo("if"))
+        if (this.instruccionesElse !== undefined) return ejecutarBloque(this.instruccionesElse, arbol, tabla.crearHijo("else"))
         return undefined
     }
 }

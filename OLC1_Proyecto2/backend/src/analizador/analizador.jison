@@ -36,9 +36,9 @@
 \s+                                         /* ignorar espacios y saltos de línea */
 "//".*                                      /* comentario de una línea */
 "/*"[^*]*\*+([^/*][^*]*\*+)*"/"             /* comentario multilínea */
-"/*"[\s\S]*                                 return 'COMENTARIO_SIN_CIERRE';
+"/*"[\s\S]*                                 { yy.erroresLexicos.push({ descripcion: "Comentario multilínea sin cerrar", linea: yylloc.first_line, columna: yylloc.first_column }); }
 
-// ---- palabras reservadas (sección 4.3) ----
+// ---- palabras reservadas ----
 "int"         return 'INT';
 "float"       return 'TIPO_DECIMAL';
 "decimal"     return 'TIPO_DECIMAL';
@@ -92,11 +92,17 @@
 \"(\\.|[^\\\"])*\"      { yytext = desescapar(yytext.substr(1, yyleng - 2)); return 'CADENA'; }
 [a-zA-Z_][a-zA-Z0-9_]*  return 'ID';
 
+
+// ---- errores léxicos: se acumulan en yy.erroresLexicos y el lexer SIGUE (sección 14.1) ----
+\"[^\"\n;]*           { yy.erroresLexicos.push({ descripcion: "Cadena sin cerrar", linea: yylloc.first_line, columna: yylloc.first_column }); yytext = yytext.substr(1); return 'CADENA'; }
+.                     { yy.erroresLexicos.push({ descripcion: "Carácter no reconocido '" + yytext + "'", linea: yylloc.first_line, columna: yylloc.first_column }); }
+
+
 <<EOF>> return 'EOF';
 
 /lex
 
-// De MENOR a MAYOR precedencia (sección 6.3)
+// De MENOR a MAYOR precedencia 
 %left OR
 %left AND
 %left IGUALDAD DESIGUALDAD
@@ -113,8 +119,8 @@ INICIO : INSTRUCCIONES EOF { return $1; }
        | EOF               { return []; }
 ;
 
-INSTRUCCIONES : INSTRUCCIONES INSTRUCCION { $1.push($2); $$ = $1; }
-              | INSTRUCCION               { $$ = [$1]; }
+INSTRUCCIONES : INSTRUCCIONES INSTRUCCION { if ($2 != null) { $1.push($2); } $$ = $1; }
+              | INSTRUCCION               { $$ = ($1 == null) ? [] : [$1]; }
 ;
 
 BLOQUE : INSTRUCCIONES { $$ = $1; }

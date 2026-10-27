@@ -1,3 +1,5 @@
+
+
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -27,7 +29,7 @@ app.get('/api/health', (req, res) => {
  *     usa varios marcos de JavaScript. El worker se crea con 64 MB de pila.
  *  2. Un tiempo máximo: si algo se cuelga, se termina el hilo y el servidor sigue vivo.
  */
-function ejecutarEnWorker(source: string): Promise<any> {
+function ejecutarEnWorker(source: string, ejecutar: boolean): Promise<any> {
     return new Promise((resolve) => {
         const fallo = (descripcion: string, codigo: string) => resolve({
             success: false, console: [], symbols: [], tokens: [], infrastructure: infraVacia(),
@@ -35,7 +37,7 @@ function ejecutarEnWorker(source: string): Promise<any> {
         });
 
         const worker = new Worker(path.join(__dirname, 'worker.js'), {
-            workerData: { source, limites: LIMITES },
+            workerData: { source, limites: LIMITES, ejecutar },
             resourceLimits: { stackSizeMb: 64, maxOldGenerationSizeMb: 512 },
         });
         const timer = setTimeout(() => {
@@ -48,14 +50,31 @@ function ejecutarEnWorker(source: string): Promise<any> {
     });
 }
 
-app.post('/api/execute', async (req, res) => {
-    // Express 5: req.body es undefined si no llegó JSON
-    const source = req.body?.source;
-    if (typeof source !== 'string') {
-        return res.status(400).json({ success: false, message: "El campo 'source' (string) es obligatorio" });
-    }
-    res.json(await ejecutarEnWorker(source));
-});
+// Endpoints de la sección 24.4. Todos reciben { "source": "..." } y devuelven JSON.
+//   execute  -> análisis completo + ejecución (todo el resultado)
+//   analyze  -> léxico + sintáctico (+ AST) SIN ejecutar
+//   tokens / ast / symbols / errors -> solo esa parte del resultado
+const ENDPOINTS: Record<string, { ejecutar: boolean; campos?: string[] }> = {
+    execute: { ejecutar: true },
+    analyze: { ejecutar: false },
+    tokens:  { ejecutar: false, campos: ['success', 'tokens', 'errors'] },
+    ast:     { ejecutar: false, campos: ['success', 'ast', 'errors'] },
+    symbols: { ejecutar: true,  campos: ['success', 'symbols', 'errors'] },
+    errors:  { ejecutar: true,  campos: ['success', 'errors'] },
+};
+
+for (const [nombre, cfg] of Object.entries(ENDPOINTS)) {
+    app.post(`/api/${nombre}`, async (req, res) => {
+        // Express 5: req.body es undefined si no llegó JSON
+        const source = req.body?.source;
+        if (typeof source !== 'string') {
+            return res.status(400).json({ success: false, message: "El campo 'source' (string) es obligatorio" });
+        }
+        const resultado = await ejecutarEnWorker(source, cfg.ejecutar);
+        if (!cfg.campos) return res.json(resultado);
+        res.json(Object.fromEntries(cfg.campos.map(c => [c, resultado[c]])));
+    });
+}
 
 app.listen(PORT, () => {
     console.log(`Servidor AutoInfra corriendo en http://localhost:${PORT}`);

@@ -1,15 +1,13 @@
-
-
-
 import Arbol from './analizador/simbolo/arbol';
 import Errores from './analizador/excepciones/errores';
 import { nombreTipo } from './analizador/simbolo/tipo';
 import { Funcion } from './analizador/instrucciones/declaracionFuncion';
 import { Tarea } from './analizador/instrucciones/tareas';
 import { ejecutarPrograma } from './analizador/ejecutar';
+import { tokenizar, Token } from './analizador/lexico';
+import { parsear } from './analizador/sintactico';
+import { construirAST, aDot } from './reportes/ast';
 import { Recurso } from './infraestructura/recursos';
-
-
 
 // Jison genera JavaScript puro (CommonJS), por eso require.
 const parser = require('./analizador/analizador.js');
@@ -18,64 +16,62 @@ export interface Limites { maxInstrucciones: number; maxProfundidad: number }
 
 export const infraVacia = () => ({ servers: [] as any[], services: [] as any[], databases: [] as any[] });
 
+type Pos = [number, number];   // [línea, columna]
+const cmp = (a: Pos, b: Pos) => a[0] - b[0] || a[1] - b[1];
+
 /**
- * Jison no informa la columna de los errores. Jison hace Object.create(lexer) en cada parse(),
- * así que el estado del lexer original queda vacío. Solución: volver a lexear el código con una
- * copia PROPIA del lexer y leer su posición.
- *  - Error léxico:     el lexer lanza; lo ya consumido (matched) termina justo antes del carácter inválido.
- *  - Error sintáctico: hash.loc es el último token ACEPTADO; el culpable es el primer token que empieza después.
+ * Un error léxico (carácter suelto, cadena rota) suele provocar un error sintáctico justo al lado
+ * ("falta ';'" porque el '@' desapareció). Esos errores son CONSECUENCIA, no un error nuevo:
+ * se descartan los sintácticos que caen entre el token anterior y el siguiente al error léxico.
  */
-function ubicarError(source: string, finAnterior: { line: number; col: number }) {
-    const lx = Object.create(parser.parser.lexer);
-    lx.setInput(source, {});
-    try {
-        while (true) {
-            const tok = lx.lex();
-            if (tok === undefined || tok === 'EOF' || tok === 1) break;
-            const l = lx.yylloc;
-            if (l.first_line > finAnterior.line || (l.first_line === finAnterior.line && l.first_column >= finAnterior.col)) {
-                return { linea: l.first_line, columna: l.first_column };
-            }
+function combinarErrores(lexicos: { descripcion: string; linea: number; columna: number }[],
+                         sintacticos: { descripcion: string; linea: number; columna: number }[],
+                         tokens: Token[]): Errores[] {
+    const zonas = lexicos.map(e => {
+        const p: Pos = [e.linea, e.columna];
+        let desde: Pos = [1, 0], hasta: Pos = [Infinity, Infinity];
+        for (const t of tokens) {
+            if (cmp([t.finLinea, t.finColumna], p) <= 0) desde = [t.finLinea, t.finColumna];
+            else if (cmp([t.linea, t.columna], p) >= 0) { hasta = [t.linea, t.columna]; break; }
         }
-    } catch {
-        const consumido: string = lx.matched ?? "";
-        return { linea: consumido.split("\n").length, columna: consumido.length - (consumido.lastIndexOf("\n") + 1) };
+        return { desde, hasta };
+    });
+    const resultado: Errores[] = lexicos.map(e => new Errores("Léxico", e.descripcion, e.linea, e.columna, "LEX-001"));
+    for (const e of sintacticos) {
+        const p: Pos = [e.linea, e.columna];
+        const esConsecuencia = zonas.some(z => cmp(p, z.desde) >= 0 && cmp(p, z.hasta) <= 0);
+        if (!esConsecuencia) resultado.push(new Errores("Sintáctico", e.descripcion, e.linea, e.columna, "SYN-001"));
     }
-    return { linea: finAnterior.line, columna: finAnterior.col };
+    return resultado.sort((a, b) => a.getLinea() - b.getLinea() || a.getColumna() - b.getColumna());
 }
 
-/** Error léxico/sintáctico de Jison -> error estructurado con tipo, código, línea y columna. */
-function errorDeParser(error: any, source: string) {
-    const msg: string = error.message || "Error en el parser";
-    const loc = error.hash?.loc;
-    const sinCierre = msg.includes("COMENTARIO_SIN_CIERRE");
-    const esLexico = msg.startsWith("Lexical error");
-    // Léxico: no hay 'token anterior' que buscar; se deja que el lexer recorra todo hasta que lance.
-    const fin = esLexico ? { line: Infinity, col: Infinity } : { line: loc?.last_line ?? 1, col: loc?.last_column ?? 0 };
-    const pos = ubicarError(source, fin);
-    return new Errores(
-        esLexico || sinCierre ? "Léxico" : "Sintáctico",
-        sinCierre ? "Comentario multilínea sin cerrar" : msg,
-        pos.linea, pos.columna,
-        esLexico || sinCierre ? "LEX-001" : "SYN-001"
-    );
-}
+/** Todo el pipeline: léxico -> sintáctico (con recuperación) -> [ejecución] -> respuesta lista para JSON. */
+export function procesar(source: string, limites: Limites, ejecutar: boolean = true): any {
+    // ---- 1. Léxico: tabla de tokens + TODOS los errores léxicos ----
+    const lex = tokenizar(parser, source);
+    const tokens = lex.tokens.map(t => ({ n: t.n, lexema: t.lexema, token: t.token, linea: t.linea, columna: t.columna + 1 }));
 
-/** Todo el pipeline: léxico -> sintáctico -> ejecución -> respuesta lista para JSON. */
-export function procesar(source: string, limites: Limites): any {
-    // ---- 1. Léxico + sintáctico (Jison LANZA excepción si falla) ----
-    let ast: any[];
-    try {
-        ast = parser.parse(source);
-    } catch (error: any) {
+    // ---- 2. Sintáctico: AST + TODOS los errores sintácticos (recuperación de errores) ----
+    const sint = parsear(parser, lex.tokens);
+    const erroresParser = combinarErrores(lex.errores, sint.errores, lex.tokens);
+
+    // ---- 3. Reporte del AST (aunque haya errores, si el parser logró armarlo) ----
+    let ast: any = null;
+    if (sint.ast) {
+        const { arbol, truncado } = construirAST(sint.ast);
+        ast = { dot: aDot(arbol, truncado), arbol, truncado };
+    }
+
+    // Con errores léxicos o sintácticos NO se ejecuta (sección 15.1: la ejecución parte de un AST válido)
+    if (erroresParser.length > 0 || !ejecutar) {
         return JSON.parse(JSON.stringify({
-            success: false, console: [], symbols: [], tokens: [], infrastructure: infraVacia(),
-            errors: [errorDeParser(error, source)]
+            success: erroresParser.length === 0, console: [], errors: erroresParser, symbols: [],
+            tokens, ast, infrastructure: infraVacia(),
         }));
     }
 
-    // ---- 2. Ejecución (registrar globales -> ejecutar main) ----
-    const arbol = new Arbol(ast, limites.maxInstrucciones, limites.maxProfundidad);
+    // ---- 4. Ejecución (registrar globales -> ejecutar main) ----
+    const arbol = new Arbol(sint.ast as any[], limites.maxInstrucciones, limites.maxProfundidad);
     try {
         ejecutarPrograma(arbol);
     } catch (error: any) {
@@ -86,25 +82,31 @@ export function procesar(source: string, limites: Limites): any {
             0, 0, pila ? "EXE-003" : "EXE-000"));
     }
 
-    // ---- 3. Respuesta ----
+    // ---- 5. Tabla de símbolos (todos los ámbitos) e infraestructura ----
     const symbols: any[] = [];
     const infrastructure = infraVacia();
-    for (const [id, simbolo] of arbol.getTablaGlobal().getTabla()) {
+    for (const { ambito, simbolo } of arbol.getTablaGlobal().getRegistro()) {
         const valor = simbolo.getValor();
-        if (valor instanceof Recurso && valor.nombre === id) {
+        const categoria = simbolo.getCategoria();
+        let tipo = nombreTipo(simbolo.getTipo());
+        let mostrar: any = valor;
+
+        if (categoria === "recurso" && valor instanceof Recurso) {
             const destino = valor.tipoRecurso === "server" ? "servers" : valor.tipoRecurso === "service" ? "services" : "databases";
             infrastructure[destino].push(valor.toJSON());
-            symbols.push({ identificador: id, categoria: "recurso", tipo: valor.tipoRecurso, ambito: "global", valor: valor.status });
+            tipo = valor.tipoRecurso;
+            mostrar = valor.status;
         } else if (valor instanceof Funcion) {
-            symbols.push({ identificador: id, categoria: "función", tipo: valor.tipoRetorno ? nombreTipo(valor.tipoRetorno) : "void", ambito: "global", valor: `${valor.params.length} parámetro(s)` });
+            tipo = valor.tipoRetorno ? nombreTipo(valor.tipoRetorno) : "void";
+            mostrar = `${valor.params.length} parámetro(s)`;
         } else if (valor instanceof Tarea) {
-            symbols.push({ identificador: id, categoria: "tarea", tipo: "task", ambito: "global", valor: "-" });
-        } else {
-            const v = valor instanceof Recurso ? valor.nombre
-                    : Array.isArray(valor) ? valor.map(x => (x instanceof Recurso ? x.nombre : x))
-                    : valor;
-            symbols.push({ identificador: id, categoria: "variable", tipo: nombreTipo(simbolo.getTipo()), ambito: "global", valor: v });
+            tipo = "task"; mostrar = "-";
+        } else if (valor instanceof Recurso) {
+            mostrar = valor.nombre;                       // variable que referencia un recurso
+        } else if (Array.isArray(valor)) {
+            mostrar = valor.map(x => (x instanceof Recurso ? x.nombre : x));
         }
+        symbols.push({ identificador: simbolo.getId(), categoria, tipo, ambito, valor: mostrar });
     }
 
     const consola = arbol.getConsola();
@@ -115,8 +117,6 @@ export function procesar(source: string, limites: Limites): any {
         success: errores.length === 0,
         console: consola === "" ? [] : consola.replace(/\n$/, "").split("\n"),
         errors: errores,
-        symbols,
-        tokens: [],
-        infrastructure
+        symbols, tokens, ast, infrastructure,
     }));
 }

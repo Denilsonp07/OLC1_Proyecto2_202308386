@@ -53,7 +53,7 @@ export default class DeclaracionRecurso extends Instruccion {
         else if (kind === "service") recurso = new Service(this.id, v.port, v.replicas ?? 1, v.dependsOn ?? [])
         else recurso = new Database(this.id, v.engine, v.version, v.port, v.dependsOn ?? [])
 
-        if (!tabla.setVariable(new Simbolo(new Tipo(this.tipoDato.getTipo()), this.id, recurso))) {
+        if (!tabla.setVariable(new Simbolo(new Tipo(this.tipoDato.getTipo()), this.id, recurso, "recurso"))) {
             return new Errores("Semántico", `El identificador '${this.id}' ya fue declarado en este ámbito`, this.linea, this.columna, "SEM-002")
         }
         arbol.log("OK", `Resource '${this.id}' registered`)

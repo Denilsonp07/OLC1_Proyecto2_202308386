@@ -16,6 +16,9 @@ export default class AccesoIndice extends Instruccion {
     interpretar(arbol: Arbol, tabla: TablaSimbolo) {
         const arr = this.base.interpretar(arbol, tabla)
         if (arr instanceof Errores) return arr
+        if (arr === null || arr === undefined) {
+            return new Errores("Ejecución", "No se puede indexar un valor null", this.linea, this.columna, "EXE-004")
+        }
         const tBase = this.base.tipoDato.clonar()
         if (tBase.getTipo() !== tipoDato.ARREGLO) {
             return new Errores("Semántico", `Solo se puede indexar un arreglo, recibió ${nombreTipo(tBase)}`, this.linea, this.columna, "SEM-008")

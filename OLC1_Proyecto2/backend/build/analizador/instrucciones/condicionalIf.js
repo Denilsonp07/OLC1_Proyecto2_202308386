@@ -42,7 +42,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const instruccion_1 = require("../abstracto/instruccion");
 const errores_1 = __importDefault(require("../excepciones/errores"));
+const bloque_1 = require("../abstracto/bloque");
 const tipo_1 = __importStar(require("../simbolo/tipo"));
+// if cond { ... } else { ... }      (else if = un else que contiene otro if)
 class CondicionalIf extends instruccion_1.Instruccion {
     condicion;
     instruccionesIf;
@@ -54,34 +56,19 @@ class CondicionalIf extends instruccion_1.Instruccion {
         this.instruccionesElse = instruccionesElse;
     }
     interpretar(arbol, tabla) {
-        let cond = this.condicion.interpretar(arbol, tabla);
+        const cond = this.condicion.interpretar(arbol, tabla);
         if (cond instanceof errores_1.default)
             return cond;
-        if (this.condicion.tipoDato.getTipo() != tipo_1.tipoDato.BOOLEAN) {
-            return new errores_1.default("Semantico", "La condicion debe ser un booleano", this.linea, this.columna);
+        if (this.condicion.tipoDato.getTipo() !== tipo_1.tipoDato.BOOLEAN) {
+            return new errores_1.default("Semántico", `La condición del if debe producir bool, produjo ${(0, tipo_1.nombreTipo)(this.condicion.tipoDato)}`, this.linea, this.columna, "SEM-001");
         }
-        if (cond) {
-            const tablaIf = tabla.crearHijo();
-            for (let i of this.instruccionesIf) {
-                if (i instanceof instruccion_1.Instruccion) {
-                    let resultado = i.interpretar(arbol, tablaIf);
-                    if (resultado instanceof errores_1.default)
-                        return resultado;
-                }
-            }
-        }
-        else {
-            if (this.instruccionesElse != undefined) {
-                const tablaElse = tabla.crearHijo();
-                for (let i of this.instruccionesElse) {
-                    if (i instanceof instruccion_1.Instruccion) {
-                        let resultado = i.interpretar(arbol, tablaElse);
-                        if (resultado instanceof errores_1.default)
-                            return resultado;
-                    }
-                }
-            }
-        }
+        // Cada bloque tiene su propio ámbito. El resultado (Errores / Senal) sube tal cual:
+        // el if NO absorbe break/continue/return.
+        if (cond)
+            return (0, bloque_1.ejecutarBloque)(this.instruccionesIf, arbol, tabla.crearHijo("if"));
+        if (this.instruccionesElse !== undefined)
+            return (0, bloque_1.ejecutarBloque)(this.instruccionesElse, arbol, tabla.crearHijo("else"));
+        return undefined;
     }
 }
 exports.default = CondicionalIf;

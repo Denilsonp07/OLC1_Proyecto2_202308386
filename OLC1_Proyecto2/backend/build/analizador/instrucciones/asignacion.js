@@ -41,6 +41,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const instruccion_1 = require("../abstracto/instruccion");
 const errores_1 = __importDefault(require("../excepciones/errores"));
 const tipo_1 = __importStar(require("../simbolo/tipo"));
+const declaracionFuncion_1 = require("./declaracionFuncion");
+// x = expresion
 class AsignacionVar extends instruccion_1.Instruccion {
     id;
     expresion;
@@ -50,18 +52,21 @@ class AsignacionVar extends instruccion_1.Instruccion {
         this.expresion = expresion;
     }
     interpretar(arbol, tabla) {
-        let variable = tabla.getVariable(this.id);
+        const variable = tabla.getVariable(this.id);
         if (variable == null) {
-            return new errores_1.default("Semantico", "La variable no existe", this.linea, this.columna);
+            return new errores_1.default("Semántico", `La variable '${this.id}' no ha sido declarada`, this.linea, this.columna, "SEM-003");
         }
-        let newValor = this.expresion.interpretar(arbol, tabla);
-        if (newValor instanceof errores_1.default)
-            return newValor;
-        if (this.expresion.tipoDato.getTipo() != variable.getTipo().getTipo()) {
-            return new errores_1.default("Semantico", "Los tipos deben de ser iguales", this.linea, this.columna);
+        if (variable.getValor() instanceof declaracionFuncion_1.Funcion) {
+            return new errores_1.default("Semántico", `'${this.id}' es una función, no una variable`, this.linea, this.columna, "SEM-008");
         }
-        this.tipoDato = variable.getTipo();
-        variable.setValor(newValor);
+        const nuevo = this.expresion.interpretar(arbol, tabla);
+        if (nuevo instanceof errores_1.default)
+            return nuevo;
+        if (!(0, tipo_1.compatible)(variable.getTipo(), this.expresion.tipoDato)) {
+            return new errores_1.default("Semántico", `No se puede asignar ${(0, tipo_1.nombreTipo)(this.expresion.tipoDato)} a '${this.id}' de tipo ${(0, tipo_1.nombreTipo)(variable.getTipo())}`, this.linea, this.columna, "SEM-001");
+        }
+        variable.setValor(nuevo);
+        return undefined;
     }
 }
 exports.default = AsignacionVar;

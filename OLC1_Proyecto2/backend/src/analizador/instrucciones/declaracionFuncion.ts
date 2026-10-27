@@ -35,7 +35,7 @@ export default class DeclaracionFuncion extends Instruccion {
         }
         // 'tabla' es el entorno donde se declara: las llamadas enlazarán su entorno local a este
         const f = new Funcion(this.nombre, this.params, this.tipoRetorno, this.cuerpo, tabla)
-        if (!tabla.setVariable(new Simbolo(new Tipo(tipoDato.VOID), this.nombre, f))) {
+        if (!tabla.setVariable(new Simbolo(new Tipo(tipoDato.VOID), this.nombre, f, "funcion"))) {
             return new Errores("Semántico", `El identificador '${this.nombre}' ya fue declarado en este ámbito`, this.linea, this.columna, "SEM-002")
         }
         return undefined

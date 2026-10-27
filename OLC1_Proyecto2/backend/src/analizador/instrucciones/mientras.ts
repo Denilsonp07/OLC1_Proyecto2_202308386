@@ -29,7 +29,7 @@ export default class Mientras extends Instruccion {
             const limite = arbol.tick(this.linea, this.columna)   // un while con cuerpo vacío también debe poder cortarse
             if (limite) return limite
 
-            const r = ejecutarBloque(this.cuerpo, arbol, tabla.crearHijo())   // ámbito nuevo por iteración
+            const r = ejecutarBloque(this.cuerpo, arbol, tabla.crearHijo("while"))   // ámbito nuevo por iteración
             if (r instanceof Errores) return r
             if (r instanceof Senal) {
                 if (r.tipo === TipoSenal.BREAK) break

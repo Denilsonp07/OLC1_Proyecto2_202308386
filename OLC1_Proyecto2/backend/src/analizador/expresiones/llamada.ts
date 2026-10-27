@@ -69,9 +69,9 @@ export default class Llamada extends Instruccion {
         const limite = arbol.entrarLlamada(this.linea, this.columna)
         if (limite) return limite
 
-        // Entorno NUEVO por llamada, enlazado al entorno donde se DECLARÓ la función (sección 8)
-        const local = new TablaSimbolo(f.entorno)
-        f.params.forEach((p, i) => local.setVariable(new Simbolo(p.tipo, p.id, valores[i])))
+        // Entorno NUEVO por llamada, enlazado al entorno donde se DECLARÓ la función 
+        const local = new TablaSimbolo(f.entorno, f.nombre)
+        f.params.forEach((p, i) => local.setVariable(new Simbolo(p.tipo, p.id, valores[i], "parametro")))
         const r = ejecutarBloque(f.cuerpo, arbol, local)
         arbol.salirLlamada()
 

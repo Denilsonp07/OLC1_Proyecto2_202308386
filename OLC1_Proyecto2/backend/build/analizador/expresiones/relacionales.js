@@ -40,59 +40,67 @@ exports.Op_relacionales = void 0;
 const instruccion_1 = require("../abstracto/instruccion");
 const errores_1 = __importDefault(require("../excepciones/errores"));
 const tipo_1 = __importStar(require("../simbolo/tipo"));
-//E<E  TRUE | FALSE
-class Relacionales extends instruccion_1.Instruccion {
-    operador1;
-    operador2;
-    Operacion;
-    esNumerico(t) {
-        return t === tipo_1.tipoDato.ENTERO || t === tipo_1.tipoDato.DECIMAL;
-    }
-    constructor(operacion, linea, columna, op1, op2) {
-        super(new tipo_1.default(tipo_1.tipoDato.BOOLEAN), linea, columna);
-        this.Operacion = operacion;
-        this.operador1 = op1;
-        this.operador2 = op2;
-    }
-    interpretar(arbol, tabla) {
-        let opIzq, opDer = null;
-        opIzq = this.operador1.interpretar(arbol, tabla);
-        if (opIzq instanceof errores_1.default)
-            return opIzq;
-        opDer = this.operador2.interpretar(arbol, tabla);
-        if (opDer instanceof errores_1.default)
-            return opDer;
-        switch (this.Operacion) {
-            case Op_relacionales.IGUALDAD:
-                return this.igualdad(opIzq, opDer);
-            case Op_relacionales.MENOR:
-                return this.menor(opIzq, opDer);
-        }
-    }
-    igualdad(op1, op2) {
-        let tipo1 = this.operador1.tipoDato.getTipo();
-        let tipo2 = this.operador2.tipoDato.getTipo();
-        this.tipoDato.setTipo(tipo_1.tipoDato.BOOLEAN);
-        if (this.esNumerico(tipo1) && this.esNumerico(tipo2))
-            return Number(op1) === Number(op2);
-        if (tipo1 === tipo_1.tipoDato.CADENA && tipo2 === tipo_1.tipoDato.CADENA)
-            return op1 === op2;
-        if (tipo1 === tipo_1.tipoDato.BOOLEAN && tipo2 === tipo_1.tipoDato.BOOLEAN)
-            return op1 === op2;
-        return new errores_1.default("Semántico", "Los operandos de == no son compatibles", this.linea, this.columna);
-    }
-    menor(op1, op2) {
-        let tipo1 = this.operador1.tipoDato.getTipo();
-        let tipo2 = this.operador2.tipoDato.getTipo();
-        this.tipoDato.setTipo(tipo_1.tipoDato.BOOLEAN);
-        if (this.esNumerico(tipo1) && this.esNumerico(tipo2))
-            return Number(op1) < Number(op2);
-        return new errores_1.default("Semántico", "El operador < requiere int o float en ambos lados", this.linea, this.columna);
-    }
-}
-exports.default = Relacionales;
 var Op_relacionales;
 (function (Op_relacionales) {
     Op_relacionales[Op_relacionales["IGUALDAD"] = 0] = "IGUALDAD";
-    Op_relacionales[Op_relacionales["MENOR"] = 1] = "MENOR";
+    Op_relacionales[Op_relacionales["DESIGUALDAD"] = 1] = "DESIGUALDAD";
+    Op_relacionales[Op_relacionales["MENOR"] = 2] = "MENOR";
+    Op_relacionales[Op_relacionales["MENOR_IGUAL"] = 3] = "MENOR_IGUAL";
+    Op_relacionales[Op_relacionales["MAYOR"] = 4] = "MAYOR";
+    Op_relacionales[Op_relacionales["MAYOR_IGUAL"] = 5] = "MAYOR_IGUAL";
 })(Op_relacionales || (exports.Op_relacionales = Op_relacionales = {}));
+const SIMBOLO = ["==", "!=", "<", "<=", ">", ">="];
+// Secciones 26.2 y 26.3
+class Relacionales extends instruccion_1.Instruccion {
+    Operacion;
+    operador1;
+    operador2;
+    constructor(Operacion, linea, columna, operador1, operador2) {
+        super(new tipo_1.default(tipo_1.tipoDato.BOOLEAN), linea, columna);
+        this.Operacion = Operacion;
+        this.operador1 = operador1;
+        this.operador2 = operador2;
+    }
+    interpretar(arbol, tabla) {
+        const a = this.operador1.interpretar(arbol, tabla);
+        if (a instanceof errores_1.default)
+            return a;
+        const t1 = this.operador1.tipoDato.clonar();
+        const b = this.operador2.interpretar(arbol, tabla);
+        if (b instanceof errores_1.default)
+            return b;
+        const t2 = this.operador2.tipoDato.clonar();
+        const n1 = t1.getTipo(), n2 = t2.getTipo();
+        this.tipoDato = new tipo_1.default(tipo_1.tipoDato.BOOLEAN);
+        const invalida = () => new errores_1.default("Semántico", `Operación '${SIMBOLO[this.Operacion]}' no válida entre ${(0, tipo_1.nombreTipo)(t1)} y ${(0, tipo_1.nombreTipo)(t2)}`, this.linea, this.columna, "SEM-008");
+        switch (this.Operacion) {
+            case Op_relacionales.MENOR:
+            case Op_relacionales.MENOR_IGUAL:
+            case Op_relacionales.MAYOR:
+            case Op_relacionales.MAYOR_IGUAL:
+                if (!(0, tipo_1.esNumerico)(n1) || !(0, tipo_1.esNumerico)(n2))
+                    return invalida();
+                if (this.Operacion === Op_relacionales.MENOR)
+                    return a < b;
+                if (this.Operacion === Op_relacionales.MENOR_IGUAL)
+                    return a <= b;
+                if (this.Operacion === Op_relacionales.MAYOR)
+                    return a > b;
+                return a >= b;
+            default: { // == y !=
+                let iguales;
+                if ((0, tipo_1.esNumerico)(n1) && (0, tipo_1.esNumerico)(n2))
+                    iguales = a === b;
+                else if (n1 === n2 && (n1 === tipo_1.tipoDato.CADENA || n1 === tipo_1.tipoDato.BOOLEAN))
+                    iguales = a === b;
+                // recursos del mismo tipo: igualdad de REFERENCIA (sección 5.2)
+                else if ((0, tipo_1.esRecurso)(n1) && (0, tipo_1.esRecurso)(n2) && (n1 === n2 || n1 === tipo_1.tipoDato.RECURSO || n2 === tipo_1.tipoDato.RECURSO))
+                    iguales = a === b;
+                else
+                    return invalida();
+                return this.Operacion === Op_relacionales.IGUALDAD ? iguales : !iguales;
+            }
+        }
+    }
+}
+exports.default = Relacionales;

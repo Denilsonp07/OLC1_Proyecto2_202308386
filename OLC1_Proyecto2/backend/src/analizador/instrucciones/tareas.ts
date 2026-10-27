@@ -28,7 +28,7 @@ export class DeclaracionTask extends Instruccion {
         super(new Tipo(tipoDato.VOID), linea, columna)
     }
     interpretar(arbol: Arbol, tabla: TablaSimbolo) {
-        if (!tabla.setVariable(new Simbolo(new Tipo(tipoDato.VOID), this.nombre, new Tarea(this.nombre, this.cuerpo, tabla)))) {
+        if (!tabla.setVariable(new Simbolo(new Tipo(tipoDato.VOID), this.nombre, new Tarea(this.nombre, this.cuerpo, tabla), "tarea"))) {
             return new Errores("Semántico", `El identificador '${this.nombre}' ya fue declarado en este ámbito`, this.linea, this.columna, "SEM-002")
         }
         return undefined
@@ -47,7 +47,7 @@ export class RunTask extends Instruccion {
         }
         const limite = arbol.entrarLlamada(this.linea, this.columna)
         if (limite) return limite
-        const r = ejecutarBloque(t.cuerpo, arbol, new TablaSimbolo(t.entorno))
+        const r = ejecutarBloque(t.cuerpo, arbol, new TablaSimbolo(t.entorno, t.nombre))
         arbol.salirLlamada()
         if (r instanceof Errores) return r
         if (r instanceof Senal) return senalHuerfana(r)
@@ -61,7 +61,7 @@ export class Main extends Instruccion {
         super(new Tipo(tipoDato.VOID), linea, columna)
     }
     interpretar(arbol: Arbol, tabla: TablaSimbolo) {
-        const r = ejecutarBloque(this.cuerpo, arbol, tabla.crearHijo())
+        const r = ejecutarBloque(this.cuerpo, arbol, tabla.crearHijo("main"))
         if (r instanceof Errores) return r
         if (r instanceof Senal) return senalHuerfana(r)
         return undefined

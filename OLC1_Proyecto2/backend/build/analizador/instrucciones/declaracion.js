@@ -7,9 +7,7 @@ const instruccion_1 = require("../abstracto/instruccion");
 const errores_1 = __importDefault(require("../excepciones/errores"));
 const simbolo_1 = __importDefault(require("../simbolo/simbolo"));
 const tipo_1 = require("../simbolo/tipo");
-//id 
-//valor
-//tipoDato
+// int x = 5;     string[] p = ["a"];     int y;   (sin valor -> valor por defecto, sección 5.1)
 class Declaracion extends instruccion_1.Instruccion {
     id;
     valor;
@@ -19,27 +17,23 @@ class Declaracion extends instruccion_1.Instruccion {
         this.valor = valor;
     }
     interpretar(arbol, tabla) {
-        if (this.valor == null) {
-            if (!tabla.setVariable(new simbolo_1.default(this.tipoDato, this.id, null))) {
-                return new errores_1.default('Semantico', "no se pude declarar la variable", this.linea, this.columna);
-            }
-            return;
+        let valor;
+        if (this.valor === null) {
+            valor = (0, tipo_1.valorPorDefecto)(this.tipoDato);
         }
-        let resValor = this.valor.interpretar(arbol, tabla);
-        if (resValor instanceof errores_1.default)
-            return resValor;
-        if (this.tipoDato.getTipo() != this.tipoDato.getTipo()) {
-            const declarado = this.tipoDato.getTipo();
-            const delValor = this.valor.tipoDato.getTipo();
-            const promocion = declarado === tipo_1.tipoDato.DECIMAL && delValor === tipo_1.tipoDato.ENTERO;
-            if (declarado !== delValor && !promocion) {
-                return new errores_1.default("Semántico", "el tipo de dato no coincide con el declarado", this.linea, this.columna);
+        else {
+            valor = this.valor.interpretar(arbol, tabla);
+            if (valor instanceof errores_1.default)
+                return valor;
+            // tipo DECLARADO vs tipo de la EXPRESIÓN (int -> float permitido)
+            if (!(0, tipo_1.compatible)(this.tipoDato, this.valor.tipoDato)) {
+                return new errores_1.default("Semántico", `No se puede asignar ${(0, tipo_1.nombreTipo)(this.valor.tipoDato)} a '${this.id}' de tipo ${(0, tipo_1.nombreTipo)(this.tipoDato)}`, this.linea, this.columna, "SEM-001");
             }
-            if (!tabla.setVariable(new simbolo_1.default(this.tipoDato, this.id, resValor))) {
-                return new errores_1.default("semantico", "La variable ya existe", this.linea, this.columna);
-            }
-            return null;
         }
+        if (!tabla.setVariable(new simbolo_1.default(this.tipoDato, this.id, valor))) {
+            return new errores_1.default("Semántico", `El identificador '${this.id}' ya fue declarado en este ámbito`, this.linea, this.columna, "SEM-002");
+        }
+        return undefined;
     }
 }
 exports.default = Declaracion;
